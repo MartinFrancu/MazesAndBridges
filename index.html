@@ -670,7 +670,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   function disposeWorld() {
     if (!world) return;
     scene.remove(world);
-    world.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    world.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) [].concat(o.material).forEach((m) => m.dispose());
+    });
   }
 
   function buildWorld() {
