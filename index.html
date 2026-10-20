@@ -16,6 +16,7 @@
   color-scheme: dark;
 }
 html, body { height: 100%; background: var(--night); color: var(--mist); overflow: hidden; overscroll-behavior: none; }
+[hidden] { display: none !important; }
 body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
@@ -42,8 +43,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .btn:hover { background: rgba(107, 90, 142, 0.6); }
 .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .btn.primary { border-color: var(--gold); color: var(--gold); }
-.btn.bridge { padding: 11px 12px 9px; font-size: 10px; flex: 0 1 calc(50% - 5px); max-width: 190px; }
 .btn.small { padding: 9px 11px 7px; font-size: 10px; white-space: nowrap; }
+.btn .sw { display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 50%; vertical-align: 0; }
 
 .actions {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
@@ -56,8 +57,15 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .actions .btn { pointer-events: auto; animation: rise 0.6s ease-out both; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
+.place {
+  position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 54px); z-index: 1;
+  text-align: center; font: 600 11px/1 var(--f-ui); letter-spacing: 0.28em; text-transform: uppercase;
+  opacity: 0; transition: opacity 1.4s ease; pointer-events: none; text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+}
+.place.on { opacity: 0.95; }
+
 .poem {
-  position: fixed; left: 0; right: 0; top: 18%; z-index: 1;
+  position: fixed; left: 0; right: 0; top: 20%; z-index: 1;
   padding-left: max(24px, env(safe-area-inset-left, 0px));
   padding-right: max(24px, env(safe-area-inset-right, 0px));
   text-align: center; text-wrap: balance;
@@ -70,7 +78,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .hint {
   position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 1;
   text-align: center; font: 400 12px/1.4 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase;
-  opacity: 0.85; transition: opacity 1.5s; pointer-events: none; padding: 0 16px;
+  opacity: 0.85; transition: opacity 1.5s; pointer-events: none; padding: 0 16px; text-wrap: balance;
 }
 .hint.off { opacity: 0; }
 
@@ -102,7 +110,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .err { font: 400 15px/1.5 var(--f-ui); }
 
 @media (prefers-reduced-motion: reduce) {
-  .poem, .overlay, .hint { transition: none; }
+  .poem, .overlay, .hint, .place { transition: none; }
   .actions .btn { animation: none; }
 }
 </style>
@@ -113,29 +121,30 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   <span>Mazes &amp; Bridges</span>
   <span class="stats">
     <span id="clock">0:00</span>
-    <span id="climbs">0 lookouts</span>
+    <span id="walked">0 arches</span>
     <button class="btn small" id="mute" type="button" aria-pressed="false">Wind on</button>
   </span>
 </div>
 
+<div class="place" id="place"></div>
 <div class="poem" id="poem"></div>
-<div class="hint off" id="hint">Drag anywhere: up to walk, sideways to turn</div>
+<div class="hint off" id="hint"></div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
 <div class="actions" id="actions"></div>
 
 <section class="overlay" id="intro">
   <h1>Mazes <span>&amp;</span><br>Bridges</h1>
-  <p>Find your way out of the hedge maze. Pale towers rise along the way. Climb one to see the maze from above, and cross the rope bridges strung between them.</p>
+  <p>Three hedge mazes float in the evening mist, one above another. Stone arches leap between their plazas. Walk an arch to see the mazes from above and to reach the higher terraces. The way out is on the highest one, beside a golden lantern.</p>
   <span class="meta">Drag to walk and turn &middot; arrow keys or WASD on a keyboard</span>
   <button class="btn primary" id="enter" type="button">Enter the maze</button>
 </section>
 
 <section class="overlay fade" id="won" hidden>
-  <h1>You walked<br><span>out.</span></h1>
+  <h1>You found<br><span>the lantern.</span></h1>
   <dl>
     <dt>Time in the maze</dt><dd id="w-time">0:00</dd>
-    <dt>Lookouts climbed</dt><dd id="w-climbs">0</dd>
-    <dt>Bridges crossed</dt><dd id="w-bridges">0</dd>
+    <dt>Arches walked</dt><dd id="w-arches">0</dd>
+    <dt>Plazas visited</dt><dd id="w-plazas">0</dd>
   </dl>
   <button class="btn primary" id="again" type="button">Walk a new maze</button>
 </section>
@@ -146,32 +155,52 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const $ = (s) => document.querySelector(s);
 
   // ---- world constants -------------------------------------------------
-  const N = 13;            // cells per side
   const CS = 4;            // cell size (world units ~ metres)
   const WT = 0.5;          // hedge thickness
   const WH = 3.2;          // hedge height
-  const HALF = (N * CS) / 2;
-  const TOWER_H = 16;
-  const DECK = TOWER_H + 0.15;
+  const SLAB = 2.6;        // terrace thickness
   const EYE = 1.6;
-  const TOP_EYE = DECK + EYE;
-  const PLAT_R = 1.4;      // where you stand on a platform
   const PLAYER_R = 0.3;
-  const TOWER_R = 0.85;
-  const SPEED = 3.4, TURN = 2.2;
-  const FOG_LOW = 0.05, FOG_HIGH = 0.011;
+  const STATUE_R = 1.4;
+  const FOOT = 2.8;        // arch foot distance from the plaza centre
+  const RAIL = 1.1;        // height of the stone parapet around a plaza
+  const SPEED = 3.4, TURN = 2.2, ARCH_SPEED = 2.6;
+  const FOG_LOW = 0.04, FOG_HIGH = 0.006;
+
+  // three terraces, each higher and smaller, overlapping at the corners
+  const LEVELS = [
+    { n: 13, y: 0, cx: 0, cz: 0 },
+    { n: 9, y: 14, cx: 38, cz: -34 },
+    { n: 7, y: 28, cx: 14, cz: -58 },
+  ];
+  LEVELS.forEach((L, i) => { L.i = i; L.half = (L.n * CS) / 2; });
+
+  // plazas are 3x3 cells; x/y are the top-left cell
+  const PLAZAS = [
+    { id: "a", L: 0, x: 1, y: 5, name: "Crimson Obelisk", color: 0xd2434f, shape: "obelisk" },
+    { id: "b", L: 0, x: 4, y: 9, name: "Saffron Sphere", color: 0xf2b630, shape: "sphere" },
+    { id: "c", L: 0, x: 9, y: 9, name: "Jade Ring", color: 0x3cc492, shape: "ring" },
+    { id: "d", L: 0, x: 6, y: 1, name: "Cobalt Spire", color: 0x4277f0, shape: "spire" },
+    { id: "e", L: 1, x: 0, y: 5, name: "Violet Cubes", color: 0xa363f5, shape: "cubes" },
+    { id: "f", L: 1, x: 5, y: 4, name: "Coral Crown", color: 0xff7d5e, shape: "crown" },
+    { id: "g", L: 1, x: 5, y: 0, name: "Amber Pyramid", color: 0xffa53d, shape: "pyramid" },
+    { id: "h", L: 2, x: 4, y: 3, name: "Teal Octahedron", color: 0x2ec9c9, shape: "octa" },
+    { id: "z", L: 2, x: 0, y: 1, name: "Lantern of the Way Out", color: 0xffe2a0, shape: "lantern", goal: true },
+  ];
+  const ARCHES = [["b", "c"], ["a", "d"], ["d", "e"], ["c", "f"], ["e", "f"], ["g", "h"]];
+  const START = { L: 0, x: 0, y: 12 };
 
   const POEMS = [
     "From up here the walls are only handwriting.",
     "The way out was drawn long before you arrived.",
     "Each wrong turn was part of the shape.",
-    "The light does not move. You do.",
     "Below, the hedges repeat the same few words.",
     "Distance is easier to forgive from above.",
     "The wind has never needed a map.",
     "What was a wall is now a line of shadow.",
+    "Every floor is somebody's ceiling.",
+    "The stairs remember both directions.",
   ];
-  const WINDS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
 
   // ---- helpers ---------------------------------------------------------
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -181,9 +210,20 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const wrapPi = (a) => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
   const lerpAngle = (a, b, t) => a + wrapPi(b - a) * t;
   const yawOf = (dx, dz) => Math.atan2(-dx, -dz);
-  const cellCenter = (x, y) => ({ x: (x + 0.5) * CS - HALF, z: (y + 0.5) * CS - HALF });
+  const cellCenter = (L, i, j) => ({ x: L.cx - L.half + (i + 0.5) * CS, z: L.cz - L.half + (j + 0.5) * CS });
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  const compass = (dx, dz) => WINDS[((Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) % 8) + 8) % 8];
+  const hex = (c) => "#" + c.toString(16).padStart(6, "0");
+
+  PLAZAS.forEach((p) => {
+    const L = LEVELS[p.L];
+    p.level = L;
+    p.y0 = L.y;
+    p.x0 = L.cx - L.half + p.x * CS; p.x1 = p.x0 + 3 * CS;
+    p.z0 = L.cz - L.half + p.y * CS; p.z1 = p.z0 + 3 * CS;
+    p.cx = (p.x0 + p.x1) / 2; p.cz = (p.z0 + p.z1) / 2;
+  });
+  const plazaById = Object.fromEntries(PLAZAS.map((p) => [p.id, p]));
+  const inRect = (p, x, z, m) => x > p.x0 + m && x < p.x1 - m && z > p.z0 + m && z < p.z1 - m;
 
   // ---- renderer / scene -------------------------------------------------
   let renderer;
@@ -197,8 +237,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+  const MIST = 0xe39f88;
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0xe39f88, FOG_LOW);
+  scene.fog = new THREE.FogExp2(MIST, FOG_LOW);
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 900);
   camera.rotation.order = "YXZ";
 
@@ -216,7 +257,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
   const GLOW = glowTexture();
 
-  // sky dome: indigo zenith, lavender band, apricot horizon, low sun
+  // sky dome: indigo zenith, lavender band, apricot horizon, and mist all the way down
   const sunDir = new THREE.Vector3(-0.55, 0.1, -0.83).normalize();
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(500, 32, 16),
@@ -225,17 +266,18 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       uniforms: {
         zen: { value: new THREE.Color(0x1b1f3a) },
         mid: { value: new THREE.Color(0x6b5a8e) },
-        hor: { value: new THREE.Color(0xe39f88) },
+        hor: { value: new THREE.Color(MIST) },
+        low: { value: new THREE.Color(0x8a6a86) },
         sun: { value: sunDir },
       },
       vertexShader: "varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
       fragmentShader: [
-        "uniform vec3 zen, mid, hor, sun; varying vec3 vDir;",
+        "uniform vec3 zen, mid, hor, low, sun; varying vec3 vDir;",
         "void main(){",
         "  float h = vDir.y;",
         "  vec3 c = mix(hor, mid, smoothstep(0.0, 0.22, h));",
         "  c = mix(c, zen, smoothstep(0.22, 0.85, h));",
-        "  c = mix(c, hor * 0.6, smoothstep(0.0, -0.35, h));",
+        "  c = mix(c, low, smoothstep(0.0, -0.9, h));",
         "  float s = max(dot(vDir, normalize(sun)), 0.0);",
         "  c += vec3(1.0, 0.82, 0.58) * (pow(s, 900.0) * 1.6 + pow(s, 14.0) * 0.3);",
         "  gl_FragColor = vec4(c, 1.0);",
@@ -245,63 +287,65 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   );
   scene.add(sky);
 
-  scene.add(new THREE.HemisphereLight(0xb7a5dc, 0x2b2233, 0.8));
+  scene.add(new THREE.HemisphereLight(0xb7a5dc, 0x4a3448, 0.85));
   const sunLight = new THREE.DirectionalLight(0xffc29a, 0.95);
-  sunLight.position.set(-0.55, 0.5, -0.7).normalize().multiplyScalar(70);
+  sunLight.target.position.set(18, 10, -30);
+  sunLight.position.set(-0.55, 0.62, -0.56).normalize().multiplyScalar(110).add(sunLight.target.position);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
-  Object.assign(sunLight.shadow.camera, { left: -44, right: 44, top: 44, bottom: -44, near: 1, far: 200 });
+  Object.assign(sunLight.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 260 });
   sunLight.shadow.bias = -0.0006;
-  sunLight.shadow.normalBias = 0.03;
+  sunLight.shadow.normalBias = 0.04;
   scene.add(sunLight, sunLight.target);
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshLambertMaterial({ color: 0x3a3346 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
   // drifting motes, the same in every maze
-  const MOTES = 380;
+  const MOTES = 520;
   const motePos = new Float32Array(MOTES * 3);
   const moteBase = [];
   for (let i = 0; i < MOTES; i++) {
-    moteBase.push({ x: (Math.random() - 0.5) * N * CS * 1.3, y: 0.4 + Math.random() * 9, z: (Math.random() - 0.5) * N * CS * 1.3, p: Math.random() * 6.28 });
+    moteBase.push({ x: -40 + Math.random() * 110, y: -6 + Math.random() * 44, z: -90 + Math.random() * 125, p: Math.random() * 6.28 });
   }
   const moteGeo = new THREE.BufferGeometry();
   moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
   const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
-    size: 0.16, map: GLOW, color: 0xffd9a8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    size: 0.18, map: GLOW, color: 0xffd9a8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   }));
+  motes.frustumCulled = false;
   scene.add(motes);
 
   // ---- maze ------------------------------------------------------------
-  // h[j][i]: hedge on the line z=j along cell column i; v[j][i]: hedge on the line x=i along cell row j
-  function genMaze() {
-    const h = Array.from({ length: N + 1 }, () => Array(N).fill(true));
-    const v = Array.from({ length: N }, () => Array(N + 1).fill(true));
+  // h[j][i]: hedge on the line between rows j-1 and j; v[j][i]: hedge on the line between columns i-1 and i
+  function genMaze(n, plazas) {
+    const h = Array.from({ length: n + 1 }, () => Array(n).fill(true));
+    const v = Array.from({ length: n }, () => Array(n + 1).fill(true));
     const open = (x, y, nx, ny) => { if (nx === x) h[Math.max(y, ny)][x] = false; else v[y][Math.max(x, nx)] = false; };
-    const seen = Array.from({ length: N }, () => Array(N).fill(false));
+    const seen = Array.from({ length: n }, () => Array(n).fill(false));
     const stack = [[0, 0]];
     seen[0][0] = true;
     while (stack.length) {
       const [x, y] = stack[stack.length - 1];
       const nb = [];
       if (y > 0 && !seen[y - 1][x]) nb.push([x, y - 1]);
-      if (y < N - 1 && !seen[y + 1][x]) nb.push([x, y + 1]);
+      if (y < n - 1 && !seen[y + 1][x]) nb.push([x, y + 1]);
       if (x > 0 && !seen[y][x - 1]) nb.push([x - 1, y]);
-      if (x < N - 1 && !seen[y][x + 1]) nb.push([x + 1, y]);
+      if (x < n - 1 && !seen[y][x + 1]) nb.push([x + 1, y]);
       if (!nb.length) { stack.pop(); continue; }
       const [nx, ny] = nb[(Math.random() * nb.length) | 0];
       open(x, y, nx, ny);
       seen[ny][nx] = true;
       stack.push([nx, ny]);
     }
-    // a few loops so it is less of a pure tree
-    for (let k = 0; k < N; k++) {
-      const x = 1 + ((Math.random() * (N - 2)) | 0), y = 1 + ((Math.random() * (N - 2)) | 0);
+    for (let k = 0; k < n; k++) {
+      const x = 1 + ((Math.random() * (n - 2)) | 0), y = 1 + ((Math.random() * (n - 2)) | 0);
       if (Math.random() < 0.5) h[y][x] = false; else v[y][x] = false;
     }
-    h[N][N - 1] = false; // the exit, south side of the far corner
+    // plazas: clear everything inside the 3x3 block
+    plazas.forEach((p) => {
+      for (let j = p.y; j < p.y + 3; j++) for (let i = p.x; i < p.x + 3; i++) {
+        if (i > p.x) v[j][i] = false;
+        if (j > p.y) h[j][i] = false;
+      }
+    });
     return { h, v };
   }
   const openSides = (m, x, y) => {
@@ -313,19 +357,195 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     return s;
   };
 
+  // ---- arches -----------------------------------------------------------
+  function archFeet(pa, pb) {
+    const dx = pb.cx - pa.cx, dz = pb.cz - pa.cz, d = Math.hypot(dx, dz), ux = dx / d, uz = dz / d;
+    return [
+      { x: pa.cx + ux * FOOT, y: pa.y0, z: pa.cz + uz * FOOT, plaza: pa },
+      { x: pb.cx - ux * FOOT, y: pb.y0, z: pb.cz - uz * FOOT, plaza: pb },
+    ];
+  }
+  const archPoint = (A, B, h, u) => ({ x: lerp(A.x, B.x, u), y: lerp(A.y, B.y, u) + h * Math.sin(Math.PI * u), z: lerp(A.z, B.z, u) });
+
+  // raise the arch until it clears every hedge, terrace and statue it does not belong to
+  function archClear(A, B, h) {
+    for (let u = 0.02; u < 0.985; u += 0.01) {
+      const p = archPoint(A, B, h, u);
+      for (const L of LEVELS) {
+        if (Math.abs(p.x - L.cx) > L.half + 1.5 || Math.abs(p.z - L.cz) > L.half + 1.5) continue;
+        const own = [A.plaza, B.plaza].find((q) => q.level === L && inRect(q, p.x, p.z, -0.8));
+        if (own && (inRect(own, p.x, p.z, 0.9) || p.y > L.y + RAIL + 0.9)) continue;
+        if (p.y < L.y + WH + 1.2 && p.y > L.y - SLAB - 2.4) return false;
+      }
+      for (const q of PLAZAS) {
+        if (q === A.plaza || q === B.plaza) continue;
+        if (Math.hypot(p.x - q.cx, p.z - q.cz) < 3 && p.y < q.y0 + 9 && p.y > q.y0 - SLAB) return false;
+      }
+    }
+    return true;
+  }
+
+  function makeArch(pa, pb) {
+    const [A, B] = archFeet(pa, pb);
+    const dist = Math.hypot(B.x - A.x, B.z - A.z);
+    let h = 0.28 * dist + 5;
+    while (!archClear(A, B, h) && h < 60) h += 1;
+    const M = Math.max(80, Math.ceil(dist * 5));
+    const pts = [], cum = [0];
+    for (let i = 0; i <= M; i++) {
+      const p = archPoint(A, B, h, i / M);
+      pts.push(new THREE.Vector3(p.x, p.y, p.z));
+      if (i) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
+    }
+    const arch = { feet: [A, B], h, pts, cum, len: cum[M], lowY: Math.min(A.y, B.y), ux: (B.x - A.x) / dist, uz: (B.z - A.z) / dist };
+    world.add(archMesh(arch, pa.color, pb.color));
+    return arch;
+  }
+
+  // stone ribbon: wide and deep at the feet, a narrow plank at the crown
+  function archMesh(arch, colA, colB) {
+    const { pts } = arch, M = pts.length;
+    const sx = -arch.uz, sz = arch.ux;
+    const stone = new THREE.Color(0xe8dfd4), ca = new THREE.Color(colA).lerp(stone, 0.25), cb = new THREE.Color(colB).lerp(stone, 0.25);
+    const corners = pts.map((p, i) => {
+      const u = i / (M - 1), s = Math.pow(Math.sin(Math.PI * u), 0.55);
+      const w = lerp(2.8, 0.34, s) / 2, th = lerp(2.4, 0.3, s);
+      return [
+        [p.x + sx * w, p.y, p.z + sz * w], [p.x - sx * w, p.y, p.z - sz * w],
+        [p.x - sx * w, p.y - th, p.z - sz * w], [p.x + sx * w, p.y - th, p.z + sz * w],
+      ];
+    });
+    const colors = pts.map((p, i) => {
+      const u = i / (M - 1);
+      const c = stone.clone();
+      if (u < 0.25) c.lerp(ca, 1 - u / 0.25);
+      if (u > 0.75) c.lerp(cb, (u - 0.75) / 0.25);
+      // faint step lines every ~45 cm of arc
+      const step = (arch.cum[i] % 0.45) < 0.09 ? 0.86 : 1;
+      return [c.r * step, c.g * step, c.b * step];
+    });
+    const pos = [], col = [], idx = [];
+    [[0, 1], [1, 2], [2, 3], [3, 0]].forEach(([a, b], face) => {
+      const base = pos.length / 3;
+      for (let i = 0; i < M; i++) {
+        pos.push(...corners[i][a], ...corners[i][b]);
+        const k = face === 0 ? 1 : 0.8;
+        const c = face === 0 ? colors[i] : colors[i].map((v) => v / (((arch.cum[i] % 0.45) < 0.09) ? 0.86 : 1));
+        col.push(c[0] * k, c[1] * k, c[2] * k, c[0] * k, c[1] * k, c[2] * k);
+      }
+      for (let i = 0; i < M - 1; i++) {
+        const k = base + i * 2;
+        idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    m.castShadow = m.receiveShadow = true;
+    return m;
+  }
+
+  function archAt(arch, s) {
+    s = clamp(s, 0, arch.len);
+    let lo = 0, hi = arch.cum.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (arch.cum[mid] <= s) lo = mid; else hi = mid; }
+    const t = (s - arch.cum[lo]) / ((arch.cum[hi] - arch.cum[lo]) || 1);
+    const p = arch.pts[lo].clone().lerp(arch.pts[hi], t);
+    const tan = arch.pts[hi].clone().sub(arch.pts[lo]).normalize();
+    return { p, tan, u: s / arch.len };
+  }
+
+  // ---- statues ------------------------------------------------------------
+  function makeStatue(p) {
+    const g = new THREE.Group();
+    g.position.set(p.cx, p.y0, p.cz);
+    const stone = new THREE.MeshLambertMaterial({ color: 0xe8dfd4 });
+    const mat = new THREE.MeshLambertMaterial({ color: p.color, emissive: p.color, emissiveIntensity: 0.28 });
+    const add = (geo, m, y, rx, ry) => {
+      const o = new THREE.Mesh(geo, m);
+      o.position.y = y;
+      if (rx) o.rotation.x = rx;
+      if (ry) o.rotation.y = ry;
+      o.castShadow = o.receiveShadow = true;
+      g.add(o);
+      return o;
+    };
+    add(new THREE.BoxGeometry(2.4, 0.8, 2.4), stone, 0.4);
+    switch (p.shape) {
+      case "obelisk":
+        add(new THREE.CylinderGeometry(0.35, 0.8, 7, 4), mat, 4.3, 0, Math.PI / 4);
+        add(new THREE.ConeGeometry(0.5, 1, 4), mat, 8.3, 0, Math.PI / 4);
+        break;
+      case "sphere":
+        add(new THREE.CylinderGeometry(0.3, 0.4, 4.6, 12), stone, 3.1);
+        add(new THREE.SphereGeometry(1.4, 24, 16), mat, 6.6);
+        break;
+      case "ring": {
+        const r = add(new THREE.TorusGeometry(1.9, 0.34, 12, 40), mat, 3.4);
+        r.rotation.y = Math.atan2(p.cz, p.cx);
+        p.spin = r;
+        break;
+      }
+      case "spire":
+        add(new THREE.ConeGeometry(1.2, 8.5, 6), mat, 5.05);
+        break;
+      case "cubes":
+        add(new THREE.BoxGeometry(2, 2, 2), mat, 1.8, 0, 0.3);
+        add(new THREE.BoxGeometry(1.5, 1.5, 1.5), mat, 3.55, 0, 0.9);
+        add(new THREE.BoxGeometry(1.1, 1.1, 1.1), mat, 4.85, 0, 1.5);
+        break;
+      case "crown":
+        add(new THREE.CylinderGeometry(0.35, 0.45, 4, 12), stone, 2.8);
+        add(new THREE.CylinderGeometry(1.4, 1.2, 0.6, 20), mat, 5.1);
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          const c = add(new THREE.ConeGeometry(0.3, 1.5, 6), mat, 6.1);
+          c.position.x = Math.cos(a) * 1.1; c.position.z = Math.sin(a) * 1.1;
+        }
+        break;
+      case "pyramid":
+        add(new THREE.ConeGeometry(2.4, 4.6, 4), mat, 3.1, 0, Math.PI / 4);
+        break;
+      case "octa":
+        add(new THREE.CylinderGeometry(0.3, 0.4, 3.6, 12), stone, 2.6);
+        p.spin = add(new THREE.OctahedronGeometry(1.6), mat, 6.2);
+        break;
+      case "lantern": {
+        add(new THREE.CylinderGeometry(0.35, 0.5, 5.2, 12), stone, 3.4);
+        add(new THREE.SphereGeometry(0.75, 20, 14), new THREE.MeshBasicMaterial({ color: 0xfff0c8 }), 6.6);
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd28a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+        glow.position.y = 6.6;
+        glow.scale.set(6, 6, 6);
+        g.add(glow);
+        [[0.35, 0.45], [1.3, 0.1]].forEach(([r, o]) => {
+          const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 160, 20, 1, true),
+            new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+          b.position.y = 87;
+          g.add(b);
+        });
+        p.beam = g.children[g.children.length - 1];
+        break;
+      }
+    }
+    return g;
+  }
+
   // ---- game state -------------------------------------------------------
-  let world = null, maze, boxes, towers, bridges, exitPt, trail, beam;
-  const player = { x: 0, z: 0, yaw: 0, bob: 0 };
-  const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6 };
-  const view = { yaw: 0, pitch: -0.5 };
-  let mode = "intro";      // intro | ground | top | won | anim
+  let world = null, arches = [], trail;
+  const player = { L: LEVELS[0], x: 0, z: 0, yaw: 0, bob: 0 };
+  const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6, roll: 0 };
+  let mode = "intro";      // intro | ground | arch | anim | won
   let anim = null;
-  let topTower = null, topAngle = 0, nearTower = null;
+  let onArch = null;       // { arch, s, enteredAt, poemShown }
+  let nearFoot = null, blockedFoot = null, curPlaza = null;
   let orbit = 0.6;
-  const stats = { time: 0, climbs: 0, bridges: 0 };
-  let lastTrail = null;
+  const stats = { time: 0, arches: 0, plazas: new Set() };
+  let lastTrail = null, running = false;
   let poemIdx = (Math.random() * POEMS.length) | 0;
-  let running = false;
+  const archHintShown = { on: false };
 
   function disposeWorld() {
     if (!world) return;
@@ -337,97 +557,74 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     disposeWorld();
     world = new THREE.Group();
     scene.add(world);
-    maze = genMaze();
-    boxes = [];
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(N * CS, N * CS), new THREE.MeshLambertMaterial({ color: 0x5b4a57 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = 0.01;
-    floor.receiveShadow = true;
-    world.add(floor);
+    const topMat = new THREE.MeshLambertMaterial({ color: 0x5b4a57 });
+    const sideMat = new THREE.MeshLambertMaterial({ color: 0xcfc3c2 });
+    const hangMat = new THREE.MeshLambertMaterial({ color: 0xb9adb4 });
 
-    // hedges
-    const segs = [];
-    for (let j = 0; j <= N; j++) for (let i = 0; i < N; i++)
-      if (maze.h[j][i]) segs.push({ x: (i + 0.5) * CS - HALF, z: j * CS - HALF, sx: CS + WT, sz: WT });
-    for (let j = 0; j < N; j++) for (let i = 0; i <= N; i++)
-      if (maze.v[j][i]) segs.push({ x: i * CS - HALF, z: (j + 0.5) * CS - HALF, sx: WT, sz: CS + WT });
-    const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), segs.length);
-    const d = new THREE.Object3D();
-    const base = new THREE.Color(0x3f5c4c), col = new THREE.Color();
-    segs.forEach((s, i) => {
-      const hgt = WH + Math.random() * 0.45;
-      d.position.set(s.x, hgt / 2, s.z);
-      d.scale.set(s.sx, hgt, s.sz);
-      d.updateMatrix();
-      hedges.setMatrixAt(i, d.matrix);
-      col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
-      hedges.setColorAt(i, col);
-      boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 });
-    });
-    hedges.castShadow = hedges.receiveShadow = true;
-    world.add(hedges);
+    LEVELS.forEach((L) => {
+      const plazas = PLAZAS.filter((p) => p.L === L.i);
+      L.maze = genMaze(L.n, plazas);
+      L.boxes = [];
+      L.statues = plazas;
 
-    // lookout towers, roughly spread across the maze
-    const anchors = [[3, 3], [9, 2], [6, 6], [2, 9], [10, 9]];
-    towers = anchors.map(([ax, ay], idx) => {
-      const cx = clamp(ax + ((Math.random() * 3) | 0) - 1, 1, N - 2);
-      const cy = clamp(ay + ((Math.random() * 3) | 0) - 1, 1, N - 2);
-      const c = cellCenter(cx, cy);
-      return { idx, cx, cy, x: c.x, z: c.z, links: [] };
-    });
-    const stone = new THREE.MeshLambertMaterial({ color: 0xe9e1d8 });
-    const rail = new THREE.MeshLambertMaterial({ color: 0xd8c8b4 });
-    towers.forEach((t) => {
-      const g = new THREE.Group();
-      g.position.set(t.x, 0, t.z);
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.55, TOWER_R, TOWER_H, 14), stone);
-      shaft.position.y = TOWER_H / 2;
-      const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.45, 0.3, 28), stone);
-      plat.position.y = TOWER_H;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.04, 6, 40), rail);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = DECK + 0.9;
-      [shaft, plat, ring].forEach((m) => { m.castShadow = true; m.receiveShadow = true; g.add(m); });
-      for (let k = 1; k <= 3; k++) {
-        const band = new THREE.Mesh(new THREE.TorusGeometry(lerp(TOWER_R, 0.55, k / 4) + 0.03, 0.05, 6, 24), rail);
-        band.rotation.x = Math.PI / 2;
-        band.position.y = (TOWER_H * k) / 4;
-        g.add(band);
+      // the terrace itself, floating
+      const size = L.n * CS + 1.2;
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(size, SLAB, size), [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
+      slab.position.set(L.cx, L.y - SLAB / 2, L.cz);
+      slab.receiveShadow = slab.castShadow = true;
+      world.add(slab);
+
+      // columns hanging down into the mist, kept clear of the terraces below
+      for (let k = 0, tries = 0; k < 6 && tries < 60; tries++) {
+        const x = L.cx + (Math.random() - 0.5) * (size - 4), z = L.cz + (Math.random() - 0.5) * (size - 4);
+        if (LEVELS.some((o) => o.y < L.y && Math.abs(x - o.cx) < o.half + 4 && Math.abs(z - o.cz) < o.half + 4)) continue;
+        const len = 18 + Math.random() * 26;
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.15, len, 10), hangMat);
+        col.position.set(x, L.y - SLAB - len / 2, z);
+        world.add(col);
+        k++;
       }
-      const lamp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd28a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-      lamp.position.y = DECK + 3.2;
-      lamp.scale.set(3, 3, 3);
-      t.lamp = lamp;
-      g.add(lamp);
-      world.add(g);
+
+      // hedges
+      const segs = [];
+      const ox = L.cx - L.half, oz = L.cz - L.half;
+      const edgeH = (i, j) => plazas.some((p) => i >= p.x && i < p.x + 3 && (j === p.y || j === p.y + 3));
+      const edgeV = (i, j) => plazas.some((p) => j >= p.y && j < p.y + 3 && (i === p.x || i === p.x + 3));
+      for (let j = 0; j <= L.n; j++) for (let i = 0; i < L.n; i++)
+        if (L.maze.h[j][i]) segs.push({ x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, rail: edgeH(i, j) });
+      for (let j = 0; j < L.n; j++) for (let i = 0; i <= L.n; i++)
+        if (L.maze.v[j][i]) segs.push({ x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, rail: edgeV(i, j) });
+      const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), segs.length);
+      const d = new THREE.Object3D();
+      const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color(), railCol = new THREE.Color(0xd9cdc6);
+      segs.forEach((s, i) => {
+        const hgt = s.rail ? RAIL : WH + Math.random() * 0.45;
+        d.position.set(s.x, L.y + hgt / 2, s.z);
+        d.scale.set(s.sx, hgt, s.sz);
+        d.updateMatrix();
+        hedges.setMatrixAt(i, d.matrix);
+        if (s.rail) col.copy(railCol);
+        else col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
+        hedges.setColorAt(i, col);
+        L.boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 });
+      });
+      hedges.castShadow = hedges.receiveShadow = true;
+      world.add(hedges);
+
+      // plazas: tinted paving and a statue
+      plazas.forEach((p) => {
+        const pave = new THREE.Mesh(new THREE.PlaneGeometry(3 * CS - WT, 3 * CS - WT),
+          new THREE.MeshLambertMaterial({ color: new THREE.Color(p.color).lerp(new THREE.Color(0x5b4a57), 0.62) }));
+        pave.rotation.x = -Math.PI / 2;
+        pave.position.set(p.cx, L.y + 0.015, p.cz);
+        pave.receiveShadow = true;
+        world.add(pave);
+        world.add(makeStatue(p));
+      });
     });
 
-    // rope bridges: a minimum spanning tree, so every lookout is reachable without clutter
-    bridges = [];
-    const linked = [towers[0]];
-    while (linked.length < towers.length) {
-      let best = null;
-      for (const a of linked) for (const b of towers) {
-        if (linked.includes(b)) continue;
-        const d = Math.hypot(b.x - a.x, b.z - a.z);
-        if (!best || d < best.d) best = { a, b, d };
-      }
-      linked.push(best.b);
-      bridges.push(makeBridge(best.a, best.b));
-    }
-
-    // the exit, marked by a column of light just outside the hedge
-    const ec = cellCenter(N - 1, N - 1);
-    exitPt = { x: ec.x, z: ec.z + CS };
-    beam = new THREE.Group();
-    beam.position.set(exitPt.x, 0, exitPt.z);
-    [[0.35, 0.5], [1.3, 0.12]].forEach(([r, o]) => {
-      beam.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, 120, 20, 1, true),
-        new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })));
-    });
-    beam.children.forEach((m) => { m.position.y = 60; });
-    world.add(beam);
+    arches = ARCHES.map(([a, b]) => makeArch(plazaById[a], plazaById[b]));
 
     // footsteps, glowing faintly so they read from above
     const tp = new Float32Array(4000 * 3);
@@ -439,52 +636,18 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     trail.count = 0;
     world.add(trail);
 
-    // start in the opposite corner, facing an open side
-    const s = cellCenter(0, 0);
-    const side = openSides(maze, 0, 0).find((o) => o.dx > 0 || o.dz > 0) || { dx: 1, dz: 0 };
-    Object.assign(player, { x: s.x, z: s.z, yaw: yawOf(side.dx, side.dz), bob: 0 });
-    Object.assign(stats, { time: 0, climbs: 0, bridges: 0 });
+    const L0 = LEVELS[START.L], s = cellCenter(L0, START.x, START.y);
+    const side = openSides(L0.maze, START.x, START.y)[0] || { dx: 1, dz: 0 };
+    Object.assign(player, { L: L0, x: s.x, z: s.z, yaw: yawOf(side.dx, side.dz), bob: 0 });
+    stats.time = 0; stats.arches = 0; stats.plazas = new Set();
     lastTrail = null;
-    nearTower = topTower = null;
-  }
-
-  function makeBridge(a, b) {
-    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
-    const ux = dx / len, uz = dz / len;
-    const p0 = new THREE.Vector3(a.x + ux * PLAT_R, DECK, a.z + uz * PLAT_R);
-    const p2 = new THREE.Vector3(b.x - ux * PLAT_R, DECK, b.z - uz * PLAT_R);
-    const mid = p0.clone().add(p2).multiplyScalar(0.5);
-    mid.y -= len * 0.12;
-    const curve = new THREE.QuadraticBezierCurve3(p0, mid, p2);
-    const n = Math.floor(curve.getLength() / 0.42);
-    const planks = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 0.07, 0.3), new THREE.MeshLambertMaterial({ color: 0x8c6c58 }), n + 1);
-    const d = new THREE.Object3D();
-    for (let i = 0; i <= n; i++) {
-      const t = i / n, p = curve.getPoint(t), tan = curve.getTangent(t);
-      d.position.copy(p);
-      d.lookAt(p.clone().add(tan));
-      d.rotateZ((Math.random() - 0.5) * 0.06);
-      d.updateMatrix();
-      planks.setMatrixAt(i, d.matrix);
-    }
-    planks.castShadow = true;
-    world.add(planks);
-    const ropeMat = new THREE.MeshLambertMaterial({ color: 0xdcc9b2 });
-    [-0.58, 0.58].forEach((s) => {
-      const off = new THREE.Vector3(-uz * s, 0.85, ux * s);
-      const rope = new THREE.QuadraticBezierCurve3(p0.clone().add(off), mid.clone().add(off).add(new THREE.Vector3(0, len * 0.02, 0)), p2.clone().add(off));
-      world.add(new THREE.Mesh(new THREE.TubeGeometry(rope, 48, 0.03, 5), ropeMat));
-    });
-    const br = { a, b, curve };
-    a.links.push(br);
-    b.links.push(br);
-    return br;
+    onArch = nearFoot = blockedFoot = curPlaza = null;
   }
 
   // ---- movement & collision ----------------------------------------------
-  function collide(p) {
+  function collide(p, L) {
     for (let pass = 0; pass < 2; pass++) {
-      for (const b of boxes) {
+      for (const b of L.boxes) {
         const cx = clamp(p.x, b.x0, b.x1), cz = clamp(p.z, b.z0, b.z1);
         const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
         if (d2 < PLAYER_R * PLAYER_R && d2 > 1e-9) {
@@ -492,18 +655,18 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
           p.x += dx * push; p.z += dz * push;
         }
       }
-      for (const t of towers) {
-        const dx = p.x - t.x, dz = p.z - t.z, d = Math.hypot(dx, dz), min = TOWER_R + PLAYER_R;
-        if (d < min && d > 1e-6) { p.x = t.x + (dx / d) * min; p.z = t.z + (dz / d) * min; }
+      for (const s of L.statues) {
+        const dx = p.x - s.cx, dz = p.z - s.cz, d = Math.hypot(dx, dz), min = STATUE_R + PLAYER_R;
+        if (d < min && d > 1e-6) { p.x = s.cx + (dx / d) * min; p.z = s.cz + (dz / d) * min; }
       }
     }
   }
 
   const keys = new Set();
-  const joy = { id: null, ox: 0, oy: 0, lx: 0, ly: 0, dx: 0, dy: 0 };
+  const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
   const JR = 58;
 
-  function updateGround(dt) {
+  function readInput() {
     let f = 0, t = 0;
     if (joy.id !== null) {
       f = -joy.dy / JR; t = -joy.dx / JR;
@@ -514,25 +677,53 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     if (keys.has("ArrowDown") || keys.has("KeyS")) f = -0.7;
     if (keys.has("ArrowLeft") || keys.has("KeyA")) t = 1;
     if (keys.has("ArrowRight") || keys.has("KeyD")) t = -1;
+    return { f, t };
+  }
 
+  // all arch feet standing on the given terrace
+  function feetOn(L) {
+    const out = [];
+    arches.forEach((a) => a.feet.forEach((ft, end) => { if (ft.plaza.level === L) out.push({ arch: a, end, ft }); }));
+    return out;
+  }
+
+  function updateGround(dt) {
+    const { f, t } = readInput();
     player.yaw += t * TURN * dt;
+    const L = player.L;
     if (f) {
       const p = { x: player.x - Math.sin(player.yaw) * f * SPEED * dt, z: player.z - Math.cos(player.yaw) * f * SPEED * dt };
-      collide(p);
+      collide(p, L);
       const moved = Math.hypot(p.x - player.x, p.z - player.z);
       player.x = p.x; player.z = p.z;
       player.bob += moved * 2.6;
-      if (moved > 0) $("#hint").classList.add("off");
+      if (moved > 0) hideHint();
       dropTrail();
     }
-    Object.assign(cam, { x: player.x, z: player.z, y: EYE + Math.sin(player.bob) * 0.035, yaw: player.yaw });
+    Object.assign(cam, { x: player.x, z: player.z, y: L.y + EYE + Math.sin(player.bob) * 0.035, yaw: player.yaw });
     cam.pitch = lerp(cam.pitch, 0, Math.min(1, dt * 4));
+    cam.roll = 0;
 
-    let near = null;
-    for (const tw of towers) if (Math.hypot(player.x - tw.x, player.z - tw.z) < 1.7) near = tw;
-    if (near !== nearTower) { nearTower = near; refreshActions(); }
+    // arch feet: walking onto one starts the climb, standing near one offers a button
+    let near = null, nd = 3.2;
+    for (const o of feetOn(L)) {
+      const d = Math.hypot(player.x - o.ft.x, player.z - o.ft.z);
+      if (blockedFoot && blockedFoot.ft === o.ft) { if (d > 2.4) blockedFoot = null; else continue; }
+      if (d < nd) { nd = d; near = o; }
+    }
+    if (near && nd < 0.9 && f > 0) { enterArch(near, false); return; }
+    if ((near && near.ft) !== (nearFoot && nearFoot.ft)) { nearFoot = near; refreshActions(); }
 
-    if (player.z > HALF + 0.6) win();
+    // plazas
+    const pl = L.statues.find((p) => inRect(p, player.x, player.z, 0.3)) || null;
+    if (pl !== curPlaza) {
+      curPlaza = pl;
+      if (pl) {
+        stats.plazas.add(pl.id);
+        showPlace(pl);
+        if (pl.goal) win();
+      }
+    }
   }
 
   function dropTrail() {
@@ -540,26 +731,97 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     lastTrail = { x: player.x, z: player.z };
     const arr = trail.geometry.attributes.position;
     const i = trail.count % arr.count;
-    arr.setXYZ(i, player.x, 0.06, player.z);
+    arr.setXYZ(i, player.x, player.L.y + 0.06, player.z);
     arr.needsUpdate = true;
     trail.count++;
     trail.geometry.setDrawRange(0, Math.min(trail.count, arr.count));
   }
 
-  function updateTop(dt) {
-    if (keys.has("ArrowLeft") || keys.has("KeyA")) view.yaw += dt * 1.4;
-    if (keys.has("ArrowRight") || keys.has("KeyD")) view.yaw -= dt * 1.4;
-    if (keys.has("ArrowUp") || keys.has("KeyW")) view.pitch = clamp(view.pitch + dt, -1.45, 0.25);
-    if (keys.has("ArrowDown") || keys.has("KeyS")) view.pitch = clamp(view.pitch - dt, -1.45, 0.25);
-    Object.assign(cam, {
-      x: topTower.x + Math.cos(topAngle) * PLAT_R, z: topTower.z + Math.sin(topAngle) * PLAT_R,
-      y: TOP_EYE + Math.sin(performance.now() / 1400) * 0.03, yaw: view.yaw, pitch: view.pitch,
-    });
+  // ---- arch walking ----------------------------------------------------------
+  function enterArch(o, viaButton) {
+    const { arch, end, ft } = o;
+    const s = end === 0 ? 0.05 : arch.len - 0.05;
+    const { p, tan } = archAt(arch, s);
+    const dir = end === 0 ? 1 : -1;
+    const yaw = yawOf(tan.x * dir, tan.z * dir);
+    const go = () => {
+      onArch = { arch, s, from: end, poemShown: false };
+      mode = "arch";
+      nearFoot = null;
+      refreshActions();
+      if (!archHintShown.on) { archHintShown.on = true; showHint("Face the way you want to go. Stand still near the top to look down.", 7000); }
+    };
+    if (viaButton) {
+      tweenTo({ x: p.x, y: p.y + EYE, z: p.z, yaw, pitch: 0 }, 0.9, () => { player.yaw = yaw; go(); });
+    } else {
+      player.yaw = yaw;
+      go();
+    }
+  }
+
+  function updateArch(dt) {
+    const { f, t } = readInput();
+    player.yaw += t * TURN * 0.8 * dt;
+    const a = onArch.arch;
+    let { tan } = archAt(a, onArch.s);
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    const hl = Math.hypot(tan.x, tan.z) || 1;
+    const along = (fx * tan.x + fz * tan.z) / hl;
+    let move = 0;
+    if (f && Math.abs(along) > 0.25) move = f * Math.sign(along) * ARCH_SPEED * dt;
+    onArch.s += move;
+    if (move) { player.bob += Math.abs(move) * 2.6; hideHint(); }
+
+    if (onArch.s <= 0 || onArch.s >= a.len) { leaveArch(onArch.s <= 0 ? 0 : 1); return; }
+
+    const at = archAt(a, onArch.s);
+    const narrow = Math.pow(Math.sin(Math.PI * at.u), 2);
+    const above = at.p.y - a.lowY;
+    cam.x = at.p.x; cam.z = at.p.z;
+    cam.y = at.p.y + EYE + Math.sin(player.bob) * 0.03;
+    cam.yaw = player.yaw;
+    // walking: look along the slope; standing still up high: lean out and look down
+    const slope = Math.atan2(at.tan.y, Math.hypot(at.tan.x, at.tan.z)) * Math.sign(move || 0);
+    const target = move ? slope * 0.6 - 0.12 : -0.75 * clamp(above / 8, 0, 1) * narrow - 0.1;
+    cam.pitch = lerp(cam.pitch, target, Math.min(1, dt * (move ? 3 : 1.2)));
+    cam.roll = Math.sin(performance.now() / 900) * 0.012 * narrow;
+
+    if (!onArch.poemShown && at.u > 0.35 && at.u < 0.65) {
+      onArch.poemShown = true;
+      poemIdx = (poemIdx + 1) % POEMS.length;
+      $("#poem").textContent = POEMS[poemIdx];
+      $("#poem").classList.add("on");
+    }
+    if (at.u < 0.15 || at.u > 0.85) hidePoem();
+  }
+
+  function leaveArch(end) {
+    const a = onArch.arch, ft = a.feet[end];
+    const { tan } = archAt(a, end === 0 ? 0.01 : a.len - 0.01);
+    const out = end === 0 ? -1 : 1;
+    const hl = Math.hypot(tan.x, tan.z) || 1;
+    // step off beside the foot, keeping the statue to one side
+    const side = 1.9 * (Math.random() < 0.5 ? -1 : 1);
+    const p = { x: ft.x + (tan.x / hl) * out * 0.4 - (tan.z / hl) * side, z: ft.z + (tan.z / hl) * out * 0.4 + (tan.x / hl) * side };
+    if (end !== onArch.from) {
+      stats.arches++;
+      $("#walked").textContent = `${stats.arches} arch${stats.arches === 1 ? "" : "es"}`;
+    }
+    player.L = ft.plaza.level;
+    collide(p, player.L);
+    player.x = p.x; player.z = p.z;
+    blockedFoot = { ft };
+    onArch = null;
+    hidePoem();
+    mode = "ground";
+    curPlaza = null;
+    refreshActions();
   }
 
   function orbitPose(a) {
-    const x = Math.cos(a) * 52, z = Math.sin(a) * 52, y = 34;
-    return { x, y, z, yaw: yawOf(-x, -z), pitch: Math.atan2(-y, Math.hypot(x, z)) * 0.85 };
+    const c = { x: 18, y: 12, z: -28 };
+    const x = c.x + Math.cos(a) * 92, z = c.z + Math.sin(a) * 92, y = 58;
+    return { x, y, z, yaw: yawOf(c.x - x, c.z - z), pitch: Math.atan2(c.y - y, 92), roll: 0 };
   }
 
   // ---- transitions --------------------------------------------------------
@@ -575,86 +837,27 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const e = ease(k);
       cam.x = lerp(f.x, target.x, e); cam.y = lerp(f.y, target.y, e); cam.z = lerp(f.z, target.z, e);
       cam.yaw = lerpAngle(f.yaw, target.yaw, e); cam.pitch = lerp(f.pitch, target.pitch, e);
+      cam.roll = lerp(f.roll || 0, 0, e);
     }, done);
   }
 
-  function climb(t) {
-    const a0 = Math.atan2(player.z - t.z, player.x - t.x);
-    const r0 = Math.hypot(player.x - t.x, player.z - t.z);
-    const turns = Math.PI * 2.5, y0 = cam.y, startYaw = cam.yaw;
-    hidePoem();
-    play(4.6, (k) => {
-      const e = ease(k), a = a0 + turns * e, r = lerp(r0, PLAT_R, e);
-      cam.x = t.x + Math.cos(a) * r; cam.z = t.z + Math.sin(a) * r; cam.y = lerp(y0, TOP_EYE, e);
-      const yawTan = yawOf(-Math.sin(a), Math.cos(a)), yawOut = yawOf(Math.cos(a), Math.sin(a));
-      cam.yaw = k < 0.15 ? lerpAngle(startYaw, yawTan, smooth(k / 0.15)) : k > 0.78 ? lerpAngle(yawTan, yawOut, smooth((k - 0.78) / 0.22)) : yawTan;
-      cam.pitch = lerp(0, -0.55, smooth(k));
-    }, () => {
-      topTower = t; topAngle = a0 + turns;
-      view.yaw = cam.yaw; view.pitch = cam.pitch;
-      stats.climbs++;
-      arriveTop();
-    });
+  let placeTimer = 0, hintTimer = 0;
+  function showPlace(p) {
+    const el = $("#place");
+    el.textContent = `The ${p.name}`;
+    el.style.color = hex(new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), 0.35).getHex());
+    el.classList.add("on");
+    clearTimeout(placeTimer);
+    placeTimer = setTimeout(() => el.classList.remove("on"), 3200);
   }
-
-  function descend() {
-    const t = topTower;
-    const sides = openSides(maze, t.cx, t.cy);
-    const side = sides[(Math.random() * sides.length) | 0];
-    const aEnd = Math.atan2(side.dz, side.dx);
-    const diff = ((topAngle - aEnd) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-    const aStart = topAngle, aFinal = aStart - (diff + 2 * Math.PI);
-    const f = { ...cam };
-    hidePoem();
-    play(4.4, (k) => {
-      const e = ease(k), a = lerp(aStart, aFinal, e), r = lerp(PLAT_R, 1.4, e);
-      cam.x = t.x + Math.cos(a) * r; cam.z = t.z + Math.sin(a) * r; cam.y = lerp(TOP_EYE, EYE, e);
-      const yawTan = yawOf(Math.sin(a), -Math.cos(a)), yawOut = yawOf(Math.cos(a), Math.sin(a));
-      cam.yaw = k < 0.15 ? lerpAngle(f.yaw, yawTan, smooth(k / 0.15)) : k > 0.78 ? lerpAngle(yawTan, yawOut, smooth((k - 0.78) / 0.22)) : yawTan;
-      cam.pitch = lerp(f.pitch, 0, smooth(k));
-    }, () => {
-      Object.assign(player, { x: cam.x, z: cam.z, yaw: cam.yaw });
-      topTower = null; nearTower = null;
-      mode = "ground";
-      refreshActions();
-    });
+  function showHint(text, ms) {
+    const el = $("#hint");
+    el.textContent = text;
+    el.classList.remove("off");
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(hideHint, ms);
   }
-
-  function cross(br) {
-    const fromA = br.a === topTower, target = fromA ? br.b : br.a;
-    const at = (u) => br.curve.getPoint(fromA ? u : 1 - u);
-    const tanAt = (u) => { const v = br.curve.getTangent(fromA ? u : 1 - u); return fromA ? v : v.negate(); };
-    const f = { ...cam };
-    const p0 = at(0), t0 = tanAt(0), yaw0 = yawOf(t0.x, t0.z);
-    const dur = br.curve.getLength() / 2.4 + 1.2;
-    hidePoem();
-    play(dur, (k) => {
-      if (k < 0.12) {
-        const e = smooth(k / 0.12);
-        cam.x = lerp(f.x, p0.x, e); cam.z = lerp(f.z, p0.z, e); cam.y = lerp(f.y, p0.y + EYE, e);
-        cam.yaw = lerpAngle(f.yaw, yaw0, e); cam.pitch = lerp(f.pitch, -0.15, e);
-      } else {
-        const u = smooth((k - 0.12) / 0.88), p = at(u), tn = tanAt(u);
-        cam.x = p.x; cam.z = p.z; cam.y = p.y + EYE + Math.sin(u * 40) * 0.025;
-        cam.yaw = yawOf(tn.x, tn.z); cam.pitch = -0.15;
-      }
-    }, () => {
-      topTower = target;
-      topAngle = Math.atan2(cam.z - target.z, cam.x - target.x);
-      view.yaw = cam.yaw; view.pitch = cam.pitch;
-      stats.bridges++;
-      arriveTop();
-    });
-  }
-
-  function arriveTop() {
-    mode = "top";
-    $("#climbs").textContent = `${stats.climbs} lookout${stats.climbs === 1 ? "" : "s"}`;
-    poemIdx = (poemIdx + 1) % POEMS.length;
-    $("#poem").textContent = POEMS[poemIdx];
-    $("#poem").classList.add("on");
-    refreshActions();
-  }
+  function hideHint() { $("#hint").classList.add("off"); }
   function hidePoem() { $("#poem").classList.remove("on"); }
 
   function win() {
@@ -662,10 +865,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     running = false;
     hidePoem();
     $("#w-time").textContent = fmtTime(stats.time);
-    $("#w-climbs").textContent = stats.climbs;
-    $("#w-bridges").textContent = stats.bridges;
-    orbit = Math.atan2(player.z, player.x);
-    tweenTo(orbitPose(orbit), 5, () => {
+    $("#w-arches").textContent = stats.arches;
+    $("#w-plazas").textContent = stats.plazas.size;
+    orbit = Math.atan2(player.z + 28, player.x - 18);
+    tweenTo(orbitPose(orbit), 6, () => {
       mode = "won";
       const w = $("#won");
       w.hidden = false;
@@ -674,24 +877,27 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   // ---- UI -------------------------------------------------------------------
-  function button(label, fn, cls) {
+  function button(label, fn, cls, swatch) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "btn" + (cls ? " " + cls : "");
-    b.textContent = label;
+    if (swatch != null) {
+      const s = document.createElement("span");
+      s.className = "sw";
+      s.style.background = hex(swatch);
+      b.append(s);
+    }
+    b.append(label);
     b.addEventListener("click", () => { initAudio(); fn(); });
     $("#actions").append(b);
   }
 
   function refreshActions() {
     $("#actions").innerHTML = "";
-    if (mode === "ground" && nearTower) button("Climb the lookout", () => climb(nearTower), "primary");
-    if (mode === "top") {
-      topTower.links.forEach((br) => {
-        const o = br.a === topTower ? br.b : br.a;
-        button(`Bridge ${compass(o.x - topTower.x, o.z - topTower.z)}`, () => cross(br), "bridge");
-      });
-      button("Climb down", descend, "primary");
+    if (mode === "ground" && nearFoot) {
+      const other = nearFoot.arch.feet[1 - nearFoot.end].plaza;
+      const nf = nearFoot;
+      button(`Climb the arch to the ${other.name}`, () => enterArch(nf, true), "primary", other.color);
     }
   }
 
@@ -700,14 +906,12 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const intro = $("#intro");
     intro.classList.add("fade");
     setTimeout(() => { intro.hidden = true; }, 1200);
-    const target = { x: player.x, y: EYE, z: player.z, yaw: player.yaw, pitch: 0 };
-    tweenTo(target, 4.2, () => {
+    const target = { x: player.x, y: player.L.y + EYE, z: player.z, yaw: player.yaw, pitch: 0 };
+    tweenTo(target, 4.6, () => {
       mode = "ground";
       running = true;
       refreshActions();
-      const hint = $("#hint");
-      hint.classList.remove("off");
-      setTimeout(() => hint.classList.add("off"), 7000);
+      showHint("Drag anywhere: up to walk, sideways to turn", 7000);
     });
   }
 
@@ -716,7 +920,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     w.classList.add("fade");
     setTimeout(() => { w.hidden = true; }, 1200);
     buildWorld();
-    $("#climbs").textContent = "0 lookouts";
+    $("#walked").textContent = "0 arches";
     start();
   }
 
@@ -765,9 +969,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const canvas = $("#c"), joyEl = $("#joy"), knob = $("#knob");
   canvas.addEventListener("pointerdown", (e) => {
     if (joy.id !== null) return;
-    Object.assign(joy, { id: e.pointerId, ox: e.clientX, oy: e.clientY, lx: e.clientX, ly: e.clientY, dx: 0, dy: 0 });
+    Object.assign(joy, { id: e.pointerId, ox: e.clientX, oy: e.clientY, dx: 0, dy: 0 });
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    if (mode === "ground") {
+    if (mode === "ground" || mode === "arch") {
       joyEl.style.left = e.clientX + "px";
       joyEl.style.top = e.clientY + "px";
       knob.style.transform = "";
@@ -776,11 +980,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   });
   canvas.addEventListener("pointermove", (e) => {
     if (e.pointerId !== joy.id) return;
-    if (mode === "top") {
-      view.yaw += (e.clientX - joy.lx) * 0.005;
-      view.pitch = clamp(view.pitch + (e.clientY - joy.ly) * 0.005, -1.45, 0.25);
-    }
-    joy.lx = e.clientX; joy.ly = e.clientY;
     let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
     const m = Math.hypot(dx, dy);
     if (m > JR) { dx *= JR / m; dy *= JR / m; }
@@ -799,7 +998,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     keys.add(e.code);
     if (e.code.startsWith("Arrow")) e.preventDefault();
     if ((e.code === "Space" || e.code === "Enter") && e.target === document.body) {
-      const first = $("#actions .btn.primary") || $("#actions .btn");
+      const first = $("#actions .btn");
       if (first) { e.preventDefault(); first.click(); }
     }
   });
@@ -831,7 +1030,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       anim.step(k);
       if (k >= 1) { const a = anim; anim = null; a.done(); }
     } else if (mode === "ground") updateGround(dt);
-    else if (mode === "top") updateTop(dt);
+    else if (mode === "arch") updateArch(dt);
     else if (mode === "intro" || mode === "won") { orbit += dt * 0.03; Object.assign(cam, orbitPose(orbit)); }
 
     if (running) {
@@ -840,11 +1039,13 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     }
 
     camera.position.set(cam.x, cam.y, cam.z);
-    camera.rotation.set(cam.pitch, cam.yaw, 0);
+    camera.rotation.set(cam.pitch, cam.yaw, cam.roll || 0);
     sky.position.copy(camera.position);
 
     // the higher you are, the thinner the mist and the louder the wind
-    const lift = clamp((cam.y - EYE) / (TOP_EYE - EYE), 0, 1);
+    let lift = clamp((cam.y - EYE) / 34, 0, 1);
+    if (onArch) lift = Math.max(lift, clamp((cam.y - EYE - onArch.arch.lowY) / 10, 0, 1));
+    if (mode === "intro" || mode === "won") lift = 1;
     scene.fog.density = lerp(FOG_LOW, FOG_HIGH, smooth(lift));
     setWind(lerp(0.05, 0.28, lift));
 
@@ -856,8 +1057,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       motePos[i * 3 + 2] = b.z + Math.cos(s * 0.17 + b.p) * 1.4;
     }
     moteGeo.attributes.position.needsUpdate = true;
-    towers.forEach((t, i) => { const k = 2.8 + Math.sin(s * 1.3 + i) * 0.35; t.lamp.scale.set(k, k, k); });
-    beam.children[1].material.opacity = 0.1 + Math.sin(s * 1.7) * 0.04;
+    PLAZAS.forEach((p) => {
+      if (p.spin) p.spin.rotation.y += dt * 0.25;
+      if (p.beam) p.beam.material.opacity = 0.1 + Math.sin(s * 1.7) * 0.04;
+    });
 
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
