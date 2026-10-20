@@ -121,7 +121,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   <span>Mazes &amp; Bridges</span>
   <span class="stats">
     <span id="clock">0:00</span>
-    <span id="walked">0 arches</span>
+    <span id="found">0 plazas</span>
     <button class="btn small" id="mute" type="button" aria-pressed="false">Wind on</button>
   </span>
 </div>
@@ -134,8 +134,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 <section class="overlay" id="intro">
   <h1>Mazes <span>&amp;</span><br>Bridges</h1>
-  <p>Three hedge mazes float in the evening mist, one above another. Stone arches leap between their plazas. Walk an arch to see the mazes from above and to reach the higher terraces. The way out is on the highest one, beside a golden lantern.</p>
-  <span class="meta">Drag to walk and turn &middot; arrow keys or WASD on a keyboard</span>
+  <p>Three hedge mazes float in the evening mist, one above another. Each plaza keeps a stone animal and a single arch. Some arches climb to the next terrace, some only cross the one you are on. The way out is on the highest terrace, beside a golden lantern.</p>
+  <span class="meta">Left side of the screen: walk and turn &middot; right side: look around &middot; WASD and R/F on a keyboard</span>
   <button class="btn primary" id="enter" type="button">Enter the maze</button>
 </section>
 
@@ -144,7 +144,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   <dl>
     <dt>Time in the maze</dt><dd id="w-time">0:00</dd>
     <dt>Arches walked</dt><dd id="w-arches">0</dd>
-    <dt>Plazas visited</dt><dd id="w-plazas">0</dd>
+    <dt>Plazas found</dt><dd id="w-plazas">0</dd>
   </dl>
   <button class="btn primary" id="again" type="button">Walk a new maze</button>
 </section>
@@ -161,34 +161,38 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const SLAB = 2.6;        // terrace thickness
   const EYE = 1.6;
   const PLAYER_R = 0.3;
-  const STATUE_R = 1.4;
+  const STATUE_R = 1.6;
   const FOOT = 2.8;        // arch foot distance from the plaza centre
-  const RAIL = 1.1;        // height of the stone parapet around a plaza
-  const SPEED = 3.4, TURN = 2.2, ARCH_SPEED = 2.6;
-  const FOG_LOW = 0.04, FOG_HIGH = 0.006;
+  const RAIL = 1.1;        // height of plaza parapets and the low "window" walls
+  const SPEED = 3.4, TURN = 2.2, ARCH_SPEED = 3.0, LOOK = 0.005;
+  const FOG_LOW = 0.05, FOG_HIGH = 0.006;
 
-  // three terraces, each higher and smaller, overlapping at the corners
+  // three terraces, each higher and smaller, overlapping at the corners.
+  // region() splits a terrace into parts the hedges never connect; only arches do.
   const LEVELS = [
-    { n: 13, y: 0, cx: 0, cz: 0 },
-    { n: 9, y: 14, cx: 38, cz: -34 },
-    { n: 7, y: 28, cx: 14, cz: -58 },
+    { n: 15, y: 0, cx: 0, cz: 0, region: (i, j) => (i < 7 ? 0 : 1) },
+    { n: 11, y: 15, cx: 42, cz: -40, region: (i, j) => (j < 5 ? 0 : 1) },
+    { n: 9, y: 30, cx: 10, cz: -72, region: () => 0 },
   ];
   LEVELS.forEach((L, i) => { L.i = i; L.half = (L.n * CS) / 2; });
 
-  // plazas are 3x3 cells; x/y are the top-left cell
+  // plazas are 3x3 cells; x/y are the top-left cell. One arch per plaza.
   const PLAZAS = [
-    { id: "a", L: 0, x: 1, y: 5, name: "Crimson Obelisk", color: 0xd2434f, shape: "obelisk" },
-    { id: "b", L: 0, x: 4, y: 9, name: "Saffron Sphere", color: 0xf2b630, shape: "sphere" },
-    { id: "c", L: 0, x: 9, y: 9, name: "Jade Ring", color: 0x3cc492, shape: "ring" },
-    { id: "d", L: 0, x: 6, y: 1, name: "Cobalt Spire", color: 0x4277f0, shape: "spire" },
-    { id: "e", L: 1, x: 0, y: 5, name: "Violet Cubes", color: 0xa363f5, shape: "cubes" },
-    { id: "f", L: 1, x: 5, y: 4, name: "Coral Crown", color: 0xff7d5e, shape: "crown" },
-    { id: "g", L: 1, x: 5, y: 0, name: "Amber Pyramid", color: 0xffa53d, shape: "pyramid" },
-    { id: "h", L: 2, x: 4, y: 3, name: "Teal Octahedron", color: 0x2ec9c9, shape: "octa" },
-    { id: "z", L: 2, x: 0, y: 1, name: "Lantern of the Way Out", color: 0xffe2a0, shape: "lantern", goal: true },
+    { id: "a", L: 0, x: 1, y: 7, name: "Crimson Stag", color: 0xd2434f, animal: "stag" },
+    { id: "d", L: 0, x: 4, y: 1, name: "Saffron Hare", color: 0xf2b630, animal: "hare" },
+    { id: "b", L: 0, x: 10, y: 10, name: "Jade Turtle", color: 0x3cc492, animal: "turtle" },
+    { id: "c", L: 0, x: 9, y: 4, name: "Ember Fox", color: 0xf07a32, animal: "fox" },
+    { id: "l", L: 0, x: 12, y: 6, name: "Lime Snail", color: 0xa6d63a, animal: "snail" },
+    { id: "e", L: 1, x: 1, y: 6, name: "Violet Owl", color: 0xa363f5, animal: "owl" },
+    { id: "hh", L: 1, x: 7, y: 7, name: "Cobalt Heron", color: 0x4a7ff2, animal: "heron" },
+    { id: "f", L: 1, x: 6, y: 1, name: "Magenta Cat", color: 0xe0559f, animal: "cat" },
+    { id: "g", L: 1, x: 2, y: 1, name: "Teal Carp", color: 0x2ec9c9, animal: "carp" },
+    { id: "j", L: 2, x: 5, y: 5, name: "Ivory Bear", color: 0xf0e6da, animal: "bear" },
+    { id: "z", L: 2, x: 0, y: 0, name: "Lantern of the Way Out", color: 0xffe2a0, animal: "lantern", goal: true },
   ];
-  const ARCHES = [["b", "c"], ["a", "d"], ["d", "e"], ["c", "f"], ["e", "f"], ["g", "h"]];
-  const START = { L: 0, x: 0, y: 12 };
+  // the way up: a-b, c-e, hh-j. The others are detours.
+  const ARCHES = [["a", "b"], ["c", "e"], ["f", "l"], ["d", "g"], ["hh", "j"]];
+  const START = { L: 0, x: 0, y: 14 };
 
   const POEMS = [
     "From up here the walls are only handwriting.",
@@ -289,11 +293,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   scene.add(new THREE.HemisphereLight(0xb7a5dc, 0x4a3448, 0.85));
   const sunLight = new THREE.DirectionalLight(0xffc29a, 0.95);
-  sunLight.target.position.set(18, 10, -30);
+  sunLight.target.position.set(18, 12, -36);
   sunLight.position.set(-0.55, 0.62, -0.56).normalize().multiplyScalar(110).add(sunLight.target.position);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
-  Object.assign(sunLight.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 260 });
+  Object.assign(sunLight.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 1, far: 280 });
   sunLight.shadow.bias = -0.0006;
   sunLight.shadow.normalBias = 0.04;
   scene.add(sunLight, sunLight.target);
@@ -303,7 +307,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const motePos = new Float32Array(MOTES * 3);
   const moteBase = [];
   for (let i = 0; i < MOTES; i++) {
-    moteBase.push({ x: -40 + Math.random() * 110, y: -6 + Math.random() * 44, z: -90 + Math.random() * 125, p: Math.random() * 6.28 });
+    moteBase.push({ x: -45 + Math.random() * 125, y: -6 + Math.random() * 48, z: -100 + Math.random() * 140, p: Math.random() * 6.28 });
   }
   const moteGeo = new THREE.BufferGeometry();
   moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
@@ -314,36 +318,53 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   scene.add(motes);
 
   // ---- maze ------------------------------------------------------------
-  // h[j][i]: hedge on the line between rows j-1 and j; v[j][i]: hedge on the line between columns i-1 and i
-  function genMaze(n, plazas) {
-    const h = Array.from({ length: n + 1 }, () => Array(n).fill(true));
-    const v = Array.from({ length: n }, () => Array(n + 1).fill(true));
-    const open = (x, y, nx, ny) => { if (nx === x) h[Math.max(y, ny)][x] = false; else v[y][Math.max(x, nx)] = false; };
+  // h[j][i]: wall on the line between rows j-1 and j; v[j][i]: between columns i-1 and i.
+  // 0 = open, 1 = hedge, 2 = low wall you can see over
+  function genMaze(L, plazas) {
+    const n = L.n, reg = L.region;
+    const h = Array.from({ length: n + 1 }, () => Array(n).fill(1));
+    const v = Array.from({ length: n }, () => Array(n + 1).fill(1));
+    const open = (x, y, nx, ny) => { if (nx === x) h[Math.max(y, ny)][x] = 0; else v[y][Math.max(x, nx)] = 0; };
     const seen = Array.from({ length: n }, () => Array(n).fill(false));
-    const stack = [[0, 0]];
-    seen[0][0] = true;
-    while (stack.length) {
-      const [x, y] = stack[stack.length - 1];
-      const nb = [];
-      if (y > 0 && !seen[y - 1][x]) nb.push([x, y - 1]);
-      if (y < n - 1 && !seen[y + 1][x]) nb.push([x, y + 1]);
-      if (x > 0 && !seen[y][x - 1]) nb.push([x - 1, y]);
-      if (x < n - 1 && !seen[y][x + 1]) nb.push([x + 1, y]);
-      if (!nb.length) { stack.pop(); continue; }
-      const [nx, ny] = nb[(Math.random() * nb.length) | 0];
-      open(x, y, nx, ny);
-      seen[ny][nx] = true;
-      stack.push([nx, ny]);
+    for (let sy = 0; sy < n; sy++) for (let sx = 0; sx < n; sx++) {
+      if (seen[sy][sx]) continue;
+      const r = reg(sx, sy);
+      seen[sy][sx] = true;
+      const stack = [[sx, sy]];
+      while (stack.length) {
+        const [x, y] = stack[stack.length - 1];
+        const nb = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]
+          .filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n && !seen[b][a] && reg(a, b) === r);
+        if (!nb.length) { stack.pop(); continue; }
+        const [nx, ny] = nb[(Math.random() * nb.length) | 0];
+        open(x, y, nx, ny);
+        seen[ny][nx] = true;
+        stack.push([nx, ny]);
+      }
     }
-    for (let k = 0; k < n; k++) {
+    // a few loops, never across a region border
+    for (let k = 0; k < n / 2; k++) {
       const x = 1 + ((Math.random() * (n - 2)) | 0), y = 1 + ((Math.random() * (n - 2)) | 0);
-      if (Math.random() < 0.5) h[y][x] = false; else v[y][x] = false;
+      if (Math.random() < 0.5) { if (reg(x, y - 1) === reg(x, y)) h[y][x] = 0; }
+      else if (reg(x - 1, y) === reg(x, y)) v[y][x] = 0;
+    }
+    // windows: some hedges become low walls, most often along region borders and terrace edges
+    const chance = (border, edge) => (border ? 0.3 : edge ? 0.12 : 0.05);
+    for (let j = 0; j <= n; j++) for (let i = 0; i < n; i++) {
+      if (h[j][i] !== 1) continue;
+      const edge = j === 0 || j === n, border = !edge && reg(i, j - 1) !== reg(i, j);
+      if (Math.random() < chance(border, edge)) h[j][i] = 2;
+    }
+    for (let j = 0; j < n; j++) for (let i = 0; i <= n; i++) {
+      if (v[j][i] !== 1) continue;
+      const edge = i === 0 || i === n, border = !edge && reg(i - 1, j) !== reg(i, j);
+      if (Math.random() < chance(border, edge)) v[j][i] = 2;
     }
     // plazas: clear everything inside the 3x3 block
     plazas.forEach((p) => {
       for (let j = p.y; j < p.y + 3; j++) for (let i = p.x; i < p.x + 3; i++) {
-        if (i > p.x) v[j][i] = false;
-        if (j > p.y) h[j][i] = false;
+        if (i > p.x) v[j][i] = 0;
+        if (j > p.y) h[j][i] = 0;
       }
     });
     return { h, v };
@@ -365,7 +386,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       { x: pb.cx - ux * FOOT, y: pb.y0, z: pb.cz - uz * FOOT, plaza: pb },
     ];
   }
-  const archPoint = (A, B, h, u) => ({ x: lerp(A.x, B.x, u), y: lerp(A.y, B.y, u) + h * Math.sin(Math.PI * u), z: lerp(A.z, B.z, u) });
+  // the crown rises quickly from the feet and stays broad, so long arches need not tower
+  const archPoint = (A, B, h, u) => ({ x: lerp(A.x, B.x, u), y: lerp(A.y, B.y, u) + h * Math.pow(Math.sin(Math.PI * u), 0.7), z: lerp(A.z, B.z, u) });
 
   // raise the arch until it clears every hedge, terrace and statue it does not belong to
   function archClear(A, B, h) {
@@ -375,11 +397,16 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
         if (Math.abs(p.x - L.cx) > L.half + 1.5 || Math.abs(p.z - L.cz) > L.half + 1.5) continue;
         const own = [A.plaza, B.plaza].find((q) => q.level === L && inRect(q, p.x, p.z, -0.8));
         if (own && (inRect(own, p.x, p.z, 0.9) || p.y > L.y + RAIL + 0.9)) continue;
-        if (p.y < L.y + WH + 1.2 && p.y > L.y - SLAB - 2.4) return false;
+        if (p.y < L.y + WH + 0.9 && p.y > L.y - SLAB - 2.4) return false;
       }
       for (const q of PLAZAS) {
         if (q === A.plaza || q === B.plaza) continue;
         if (Math.hypot(p.x - q.cx, p.z - q.cz) < 3 && p.y < q.y0 + 9 && p.y > q.y0 - SLAB) return false;
+      }
+      // arches may cross each other, but with room to walk underneath
+      for (const o of arches) for (let i = 0; i < o.pts.length; i += 2) {
+        const q = o.pts[i];
+        if (Math.abs(q.x - p.x) < 2.4 && Math.abs(q.z - p.z) < 2.4 && Math.abs(q.y - p.y) < 4.8) return false;
       }
     }
     return true;
@@ -388,8 +415,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   function makeArch(pa, pb) {
     const [A, B] = archFeet(pa, pb);
     const dist = Math.hypot(B.x - A.x, B.z - A.z);
-    let h = 0.28 * dist + 5;
-    while (!archClear(A, B, h) && h < 60) h += 1;
+    let h = 0.18 * dist + 4;
+    while (!archClear(A, B, h) && h < 70) h += 1;
     const M = Math.max(80, Math.ceil(dist * 5));
     const pts = [], cum = [0];
     for (let i = 0; i <= M; i++) {
@@ -459,83 +486,175 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   // ---- statues ------------------------------------------------------------
+  // low-poly animals built from a handful of faceted primitives; each faces +x
+  function buildAnimal(kind, color) {
+    const g = new THREE.Group();
+    const c = new THREE.Color(color);
+    const std = (col, glow) => new THREE.MeshStandardMaterial({ color: col, flatShading: true, roughness: 0.85, metalness: 0, emissive: col, emissiveIntensity: glow });
+    const mat = std(c, 0.2), dark = std(c.clone().multiplyScalar(0.4), 0.05), pale = std(c.clone().lerp(new THREE.Color(0xffffff), 0.6), 0.12);
+    const P = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+      const o = new THREE.Mesh(geo, m);
+      o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.rotation.set(rx, ry, rz);
+      o.castShadow = true;
+      g.add(o);
+      return o;
+    };
+    const ico = (r) => new THREE.IcosahedronGeometry(r, 0);
+    const cone = (r, h, n = 5) => new THREE.ConeGeometry(r, h, n);
+    const box = (x, y, z) => new THREE.BoxGeometry(x, y, z);
+    const cyl = (a, b, h, n = 5) => new THREE.CylinderGeometry(a, b, h, n);
+    const both = (f) => [-1, 1].forEach(f);
+    switch (kind) {
+      case "fox":
+        P(ico(0.5), mat, 0, 0.75, 0, 1.6, 0.85, 0.8);
+        P(ico(0.35), pale, 0.55, 0.72, 0, 1, 1, 0.9);
+        P(ico(0.32), mat, 0.95, 1.15, 0, 1.1, 0.9, 0.9);
+        P(cone(0.16, 0.45, 4), mat, 1.32, 1.08, 0, 1, 1, 1, 0, 0, -Math.PI / 2);
+        P(ico(0.06), dark, 1.55, 1.08, 0);
+        both((s) => P(cone(0.11, 0.32, 4), dark, 0.9, 1.47, 0.14 * s));
+        [0.45, -0.45].forEach((x) => both((s) => P(box(0.13, 0.55, 0.13), dark, x, 0.28, 0.18 * s)));
+        P(cone(0.28, 1.1, 5), mat, -1.15, 1.05, 0, 1, 1, 1, 0, 0, 1.15);
+        P(cone(0.13, 0.3, 5), pale, -1.68, 1.3, 0, 1, 1, 1, 0, 0, 1.15);
+        break;
+      case "owl":
+        P(ico(0.6), mat, 0, 1.0, 0, 1, 1.3, 0.95);
+        P(ico(0.42), pale, 0.28, 0.92, 0, 0.6, 1.1, 0.9);
+        P(ico(0.48), mat, 0.05, 1.95, 0, 1.05, 0.85, 1.05);
+        both((s) => { P(ico(0.16), pale, 0.42, 2.0, 0.18 * s); P(ico(0.075), dark, 0.55, 2.0, 0.18 * s); });
+        P(cone(0.07, 0.22, 4), dark, 0.5, 1.84, 0, 1, 1, 1, 0, 0, -2.4);
+        both((s) => P(cone(0.1, 0.38, 4), mat, 0, 2.42, 0.28 * s, 1, 1, 1, 0.35 * s, 0, 0));
+        both((s) => P(ico(0.45), dark, -0.05, 1.05, 0.56 * s, 0.9, 1.5, 0.35));
+        both((s) => P(box(0.28, 0.08, 0.3), dark, 0.18, 0.05, 0.2 * s));
+        break;
+      case "stag":
+        P(ico(0.55), mat, 0, 1.55, 0, 1.7, 0.85, 0.85);
+        [0.6, -0.6].forEach((x) => both((s) => P(box(0.12, 1.2, 0.12), dark, x, 0.6, 0.2 * s)));
+        P(cyl(0.17, 0.26, 0.85), mat, 0.8, 2.05, 0, 1, 1, 1, 0, 0, -0.6);
+        P(ico(0.26), mat, 1.08, 2.45, 0, 1.45, 0.9, 0.9);
+        P(ico(0.07), dark, 1.45, 2.38, 0);
+        both((s) => {
+          P(cyl(0.035, 0.055, 1.1, 4), pale, 0.95, 3.0, 0.28 * s, 1, 1, 1, 0.55 * s, 0, 0.2);
+          P(cyl(0.03, 0.04, 0.55, 4), pale, 1.1, 3.25, 0.42 * s, 1, 1, 1, 0.2 * s, 0, -0.6);
+          P(cyl(0.025, 0.035, 0.5, 4), pale, 0.85, 3.45, 0.55 * s, 1, 1, 1, 0.9 * s, 0, 0.4);
+        });
+        P(ico(0.12), pale, -0.92, 1.75, 0);
+        break;
+      case "hare":
+        P(ico(0.5), mat, -0.1, 0.55, 0, 1.3, 1, 0.9);
+        both((s) => P(ico(0.36), mat, -0.4, 0.42, 0.26 * s));
+        P(ico(0.3), mat, 0.5, 1.0, 0, 1.2, 1, 0.9);
+        both((s) => P(ico(0.15), mat, 0.38, 1.6, 0.1 * s, 0.6, 3, 1, 0.15 * s, 0, 0.25));
+        both((s) => P(ico(0.05), dark, 0.72, 1.07, 0.15 * s));
+        both((s) => P(box(0.11, 0.4, 0.11), mat, 0.38, 0.2, 0.13 * s));
+        P(ico(0.15), pale, -0.75, 0.68, 0);
+        break;
+      case "heron":
+        both((s) => P(cyl(0.03, 0.03, 1.6, 4), dark, 0, 0.8, 0.12 * s));
+        P(ico(0.4), mat, 0, 1.85, 0, 1.6, 0.9, 0.8);
+        P(cyl(0.08, 0.11, 0.75), mat, 0.45, 2.3, 0, 1, 1, 1, 0, 0, -0.5);
+        P(cyl(0.07, 0.08, 0.6), mat, 0.6, 2.85, 0, 1, 1, 1, 0, 0, 0.3);
+        P(ico(0.14), mat, 0.52, 3.2, 0, 1.3, 1, 1);
+        P(cone(0.05, 0.65, 4), dark, 0.9, 3.18, 0, 1, 1, 1, 0, 0, -Math.PI / 2);
+        P(cone(0.03, 0.4, 3), dark, 0.3, 3.3, 0, 1, 1, 1, 0, 0, 1.9);
+        P(cone(0.16, 0.45, 4), pale, -0.75, 1.8, 0, 1, 1, 0.6, 0, 0, 1.8);
+        break;
+      case "bear":
+        P(ico(0.8), mat, 0, 1.0, 0, 1.5, 0.95, 0.95);
+        P(ico(0.42), mat, 0.4, 1.62, 0, 1.2, 0.6, 1);
+        [0.65, -0.65].forEach((x) => both((s) => P(cyl(0.2, 0.18, 0.7, 6), mat, x, 0.35, 0.36 * s)));
+        P(ico(0.42), mat, 1.15, 1.35, 0);
+        P(ico(0.2), pale, 1.5, 1.25, 0, 1.2, 0.8, 0.9);
+        P(ico(0.07), dark, 1.72, 1.3, 0);
+        both((s) => { P(ico(0.13), mat, 1.05, 1.75, 0.25 * s); P(ico(0.05), dark, 1.45, 1.48, 0.17 * s); });
+        break;
+      case "cat":
+        P(ico(0.5), mat, 0, 0.65, 0, 0.95, 1.3, 0.85);
+        P(ico(0.32), pale, 0.25, 0.85, 0, 0.8, 1.2, 0.9);
+        P(ico(0.35), mat, 0.15, 1.55, 0, 1, 0.9, 1.05);
+        both((s) => P(cone(0.12, 0.32, 3), mat, 0.1, 1.9, 0.18 * s));
+        both((s) => P(ico(0.06), dark, 0.46, 1.6, 0.12 * s));
+        both((s) => P(box(0.12, 0.6, 0.12), mat, 0.32, 0.3, 0.15 * s));
+        P(new THREE.TorusGeometry(0.45, 0.07, 4, 10, Math.PI), mat, -0.2, 0.1, 0.05, 1, 1, 1, -Math.PI / 2, 0, 0);
+        break;
+      case "carp":
+        P(cyl(0.1, 0.16, 1.35, 6), pale, 0, 0.67, 0);
+        P(ico(0.5), mat, 0, 1.6, 0, 1.7, 0.75, 0.45, 0, 0, 0.5);
+        P(cone(0.38, 0.6, 3), mat, -0.86, 1.13, 0, 1, 1, 0.25, 0, 0, -1.07);
+        P(cone(0.2, 0.45, 3), dark, -0.12, 2.05, 0, 1, 1, 0.3, 0, 0, 0.5);
+        both((s) => P(ico(0.07), dark, 0.62, 2.0, 0.2 * s));
+        both((s) => P(cone(0.12, 0.35, 3), pale, 0.25, 1.4, 0.22 * s, 1, 1, 0.3, 0, 0, 2.2));
+        break;
+      case "turtle":
+        P(new THREE.SphereGeometry(0.8, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), mat, 0, 0.35, 0, 1.25, 0.9, 1);
+        P(cyl(1.0, 1.0, 0.12, 8), dark, 0, 0.38, 0, 1, 1, 0.8);
+        P(ico(0.25), pale, 1.2, 0.48, 0, 1.3, 1, 1);
+        both((s) => P(ico(0.05), dark, 1.42, 0.55, 0.12 * s));
+        [0.65, -0.65].forEach((x) => both((s) => P(box(0.5, 0.08, 0.25), pale, x, 0.25, 0.72 * s, 1, 1, 1, 0, 0.5 * s * Math.sign(x), 0)));
+        break;
+      case "snail":
+        P(ico(0.3), pale, 0.1, 0.22, 0, 3.4, 0.7, 1);
+        P(new THREE.TorusGeometry(0.42, 0.3, 5, 9), mat, -0.15, 0.95, 0);
+        both((s) => P(ico(0.22), dark, -0.15, 0.95, 0.2 * s));
+        both((s) => { P(cyl(0.03, 0.04, 0.5, 4), pale, 0.95, 0.55, 0.1 * s, 1, 1, 1, 0, 0, -0.3); P(ico(0.07), dark, 1.03, 0.8, 0.1 * s); });
+        break;
+    }
+    return g;
+  }
+
   function makeStatue(p) {
     const g = new THREE.Group();
     g.position.set(p.cx, p.y0, p.cz);
     const stone = new THREE.MeshLambertMaterial({ color: 0xe8dfd4 });
-    const mat = new THREE.MeshLambertMaterial({ color: p.color, emissive: p.color, emissiveIntensity: 0.28 });
-    const add = (geo, m, y, rx, ry) => {
-      const o = new THREE.Mesh(geo, m);
+    const block = (w, h, y) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), stone);
       o.position.y = y;
-      if (rx) o.rotation.x = rx;
-      if (ry) o.rotation.y = ry;
       o.castShadow = o.receiveShadow = true;
       g.add(o);
-      return o;
     };
-    add(new THREE.BoxGeometry(2.4, 0.8, 2.4), stone, 0.4);
-    switch (p.shape) {
-      case "obelisk":
-        add(new THREE.CylinderGeometry(0.35, 0.8, 7, 4), mat, 4.3, 0, Math.PI / 4);
-        add(new THREE.ConeGeometry(0.5, 1, 4), mat, 8.3, 0, Math.PI / 4);
-        break;
-      case "sphere":
-        add(new THREE.CylinderGeometry(0.3, 0.4, 4.6, 12), stone, 3.1);
-        add(new THREE.SphereGeometry(1.4, 24, 16), mat, 6.6);
-        break;
-      case "ring": {
-        const r = add(new THREE.TorusGeometry(1.9, 0.34, 12, 40), mat, 3.4);
-        r.rotation.y = Math.atan2(p.cz, p.cx);
-        p.spin = r;
-        break;
-      }
-      case "spire":
-        add(new THREE.ConeGeometry(1.2, 8.5, 6), mat, 5.05);
-        break;
-      case "cubes":
-        add(new THREE.BoxGeometry(2, 2, 2), mat, 1.8, 0, 0.3);
-        add(new THREE.BoxGeometry(1.5, 1.5, 1.5), mat, 3.55, 0, 0.9);
-        add(new THREE.BoxGeometry(1.1, 1.1, 1.1), mat, 4.85, 0, 1.5);
-        break;
-      case "crown":
-        add(new THREE.CylinderGeometry(0.35, 0.45, 4, 12), stone, 2.8);
-        add(new THREE.CylinderGeometry(1.4, 1.2, 0.6, 20), mat, 5.1);
-        for (let k = 0; k < 7; k++) {
-          const a = (k / 7) * Math.PI * 2;
-          const c = add(new THREE.ConeGeometry(0.3, 1.5, 6), mat, 6.1);
-          c.position.x = Math.cos(a) * 1.1; c.position.z = Math.sin(a) * 1.1;
-        }
-        break;
-      case "pyramid":
-        add(new THREE.ConeGeometry(2.4, 4.6, 4), mat, 3.1, 0, Math.PI / 4);
-        break;
-      case "octa":
-        add(new THREE.CylinderGeometry(0.3, 0.4, 3.6, 12), stone, 2.6);
-        p.spin = add(new THREE.OctahedronGeometry(1.6), mat, 6.2);
-        break;
-      case "lantern": {
-        add(new THREE.CylinderGeometry(0.35, 0.5, 5.2, 12), stone, 3.4);
-        add(new THREE.SphereGeometry(0.75, 20, 14), new THREE.MeshBasicMaterial({ color: 0xfff0c8 }), 6.6);
-        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd28a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-        glow.position.y = 6.6;
-        glow.scale.set(6, 6, 6);
-        g.add(glow);
-        [[0.35, 0.45], [1.3, 0.1]].forEach(([r, o]) => {
-          const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 160, 20, 1, true),
-            new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-          b.position.y = 87;
-          g.add(b);
-        });
-        p.beam = g.children[g.children.length - 1];
-        break;
-      }
+    if (p.animal === "lantern") {
+      block(2.4, 0.8, 0.4);
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 5.2, 12), stone);
+      col.position.y = 3.4;
+      g.add(col);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.75, 20, 14), new THREE.MeshBasicMaterial({ color: 0xfff0c8 }));
+      orb.position.y = 6.6;
+      g.add(orb);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd28a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      glow.position.y = 6.6;
+      glow.scale.set(6, 6, 6);
+      g.add(glow);
+      [[0.35, 0.45], [1.3, 0.1]].forEach(([r, o]) => {
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 160, 20, 1, true),
+          new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        b.position.y = 87;
+        g.add(b);
+        p.beam = b;
+      });
+      return g;
     }
+    // the animal: about 3.2 m across, raised on a plinth so its top stands near 6.4 m, facing its arch
+    const a = buildAnimal(p.animal, p.color);
+    let box = new THREE.Box3().setFromObject(a), size = box.getSize(new THREE.Vector3());
+    a.scale.setScalar(3.2 / Math.max(size.x, size.y, size.z));
+    box = new THREE.Box3().setFromObject(a); size = box.getSize(new THREE.Vector3());
+    const plinth = Math.max(0.8, 6.4 - size.y);
+    block(2.6, 0.5, 0.25);
+    block(2.0, plinth - 0.5, 0.5 + (plinth - 0.5) / 2);
+    const holder = new THREE.Group();
+    a.position.set(-(box.min.x + box.max.x) / 2, plinth - box.min.y, -(box.min.z + box.max.z) / 2);
+    holder.add(a);
+    const pair = ARCHES.find((x) => x.includes(p.id));
+    if (pair) {
+      const o = plazaById[pair[0] === p.id ? pair[1] : pair[0]];
+      holder.rotation.y = Math.atan2(-(o.cz - p.cz), o.cx - p.cx);
+    }
+    g.add(holder);
     return g;
   }
 
   // ---- game state -------------------------------------------------------
   let world = null, arches = [], trail;
-  const player = { L: LEVELS[0], x: 0, z: 0, yaw: 0, bob: 0 };
+  const player = { L: LEVELS[0], x: 0, z: 0, yaw: 0, pitch: 0, bob: 0 };
   const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6, roll: 0 };
   let mode = "intro";      // intro | ground | arch | anim | won
   let anim = null;
@@ -543,6 +662,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   let nearFoot = null, blockedFoot = null, curPlaza = null;
   let orbit = 0.6;
   const stats = { time: 0, arches: 0, plazas: new Set() };
+  const updateFound = () => { $("#found").textContent = `${stats.plazas.size}/${PLAZAS.length} plazas`; };
   let lastTrail = null, running = false;
   let poemIdx = (Math.random() * POEMS.length) | 0;
   const archHintShown = { on: false };
@@ -564,7 +684,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
     LEVELS.forEach((L) => {
       const plazas = PLAZAS.filter((p) => p.L === L.i);
-      L.maze = genMaze(L.n, plazas);
+      L.maze = genMaze(L, plazas);
       L.boxes = [];
       L.statues = plazas;
 
@@ -592,9 +712,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const edgeH = (i, j) => plazas.some((p) => i >= p.x && i < p.x + 3 && (j === p.y || j === p.y + 3));
       const edgeV = (i, j) => plazas.some((p) => j >= p.y && j < p.y + 3 && (i === p.x || i === p.x + 3));
       for (let j = 0; j <= L.n; j++) for (let i = 0; i < L.n; i++)
-        if (L.maze.h[j][i]) segs.push({ x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, rail: edgeH(i, j) });
+        if (L.maze.h[j][i]) segs.push({ x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, rail: L.maze.h[j][i] === 2 || edgeH(i, j) });
       for (let j = 0; j < L.n; j++) for (let i = 0; i <= L.n; i++)
-        if (L.maze.v[j][i]) segs.push({ x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, rail: edgeV(i, j) });
+        if (L.maze.v[j][i]) segs.push({ x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, rail: L.maze.v[j][i] === 2 || edgeV(i, j) });
       const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), segs.length);
       const d = new THREE.Object3D();
       const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color(), railCol = new THREE.Color(0xd9cdc6);
@@ -624,7 +744,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       });
     });
 
-    arches = ARCHES.map(([a, b]) => makeArch(plazaById[a], plazaById[b]));
+    arches = [];
+    ARCHES.forEach(([a, b]) => arches.push(makeArch(plazaById[a], plazaById[b])));
 
     // footsteps, glowing faintly so they read from above
     const tp = new Float32Array(4000 * 3);
@@ -638,8 +759,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
     const L0 = LEVELS[START.L], s = cellCenter(L0, START.x, START.y);
     const side = openSides(L0.maze, START.x, START.y)[0] || { dx: 1, dz: 0 };
-    Object.assign(player, { L: L0, x: s.x, z: s.z, yaw: yawOf(side.dx, side.dz), bob: 0 });
+    Object.assign(player, { L: L0, x: s.x, z: s.z, yaw: yawOf(side.dx, side.dz), pitch: 0, bob: 0 });
     stats.time = 0; stats.arches = 0; stats.plazas = new Set();
+    updateFound();
     lastTrail = null;
     onArch = nearFoot = blockedFoot = curPlaza = null;
   }
@@ -664,6 +786,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   const keys = new Set();
   const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+  const look = { id: null, lx: 0, ly: 0 };
   const JR = 58;
 
   function readInput() {
@@ -677,6 +800,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     if (keys.has("ArrowDown") || keys.has("KeyS")) f = -0.7;
     if (keys.has("ArrowLeft") || keys.has("KeyA")) t = 1;
     if (keys.has("ArrowRight") || keys.has("KeyD")) t = -1;
+    if (keys.has("KeyR")) player.pitch = clamp(player.pitch + 0.02, -1.35, 0.9);
+    if (keys.has("KeyF")) player.pitch = clamp(player.pitch - 0.02, -1.35, 0.9);
     return { f, t };
   }
 
@@ -700,9 +825,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       if (moved > 0) hideHint();
       dropTrail();
     }
-    Object.assign(cam, { x: player.x, z: player.z, y: L.y + EYE + Math.sin(player.bob) * 0.035, yaw: player.yaw });
-    cam.pitch = lerp(cam.pitch, 0, Math.min(1, dt * 4));
-    cam.roll = 0;
+    if (f && look.id === null) player.pitch = lerp(player.pitch, 0, Math.min(1, dt * 1.5));
+    Object.assign(cam, { x: player.x, z: player.z, y: L.y + EYE + Math.sin(player.bob) * 0.035, yaw: player.yaw, pitch: player.pitch, roll: 0 });
 
     // arch feet: walking onto one starts the climb, standing near one offers a button
     let near = null, nd = 3.2;
@@ -720,6 +844,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       curPlaza = pl;
       if (pl) {
         stats.plazas.add(pl.id);
+        updateFound();
         showPlace(pl);
         if (pl.goal) win();
       }
@@ -745,14 +870,14 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const dir = end === 0 ? 1 : -1;
     const yaw = yawOf(tan.x * dir, tan.z * dir);
     const go = () => {
-      onArch = { arch, s, from: end, poemShown: false };
+      onArch = { arch, s, from: end, poemShown: false, dir: 1 };
       mode = "arch";
       nearFoot = null;
       refreshActions();
-      if (!archHintShown.on) { archHintShown.on = true; showHint("Face the way you want to go. Stand still near the top to look down.", 7000); }
+      if (!archHintShown.on) { archHintShown.on = true; showHint("Walk with the left side. Drag the right side to look down.", 7000); }
     };
     if (viaButton) {
-      tweenTo({ x: p.x, y: p.y + EYE, z: p.z, yaw, pitch: 0 }, 0.9, () => { player.yaw = yaw; go(); });
+      tweenTo({ x: p.x, y: p.y + EYE, z: p.z, yaw, pitch: player.pitch }, 0.9, () => { player.yaw = yaw; go(); });
     } else {
       player.yaw = yaw;
       go();
@@ -761,14 +886,15 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   function updateArch(dt) {
     const { f, t } = readInput();
-    player.yaw += t * TURN * 0.8 * dt;
+    player.yaw += t * TURN * dt;
     const a = onArch.arch;
     let { tan } = archAt(a, onArch.s);
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     const hl = Math.hypot(tan.x, tan.z) || 1;
     const along = (fx * tan.x + fz * tan.z) / hl;
-    let move = 0;
-    if (f && Math.abs(along) > 0.25) move = f * Math.sign(along) * ARCH_SPEED * dt;
+    // walk the way you face; looking straight sideways keeps the last direction
+    if (Math.abs(along) > 0.2) onArch.dir = Math.sign(along);
+    const move = f ? f * onArch.dir * ARCH_SPEED * dt : 0;
     onArch.s += move;
     if (move) { player.bob += Math.abs(move) * 2.6; hideHint(); }
 
@@ -776,14 +902,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
     const at = archAt(a, onArch.s);
     const narrow = Math.pow(Math.sin(Math.PI * at.u), 2);
-    const above = at.p.y - a.lowY;
     cam.x = at.p.x; cam.z = at.p.z;
     cam.y = at.p.y + EYE + Math.sin(player.bob) * 0.03;
     cam.yaw = player.yaw;
-    // walking: look along the slope; standing still up high: lean out and look down
-    const slope = Math.atan2(at.tan.y, Math.hypot(at.tan.x, at.tan.z)) * Math.sign(move || 0);
-    const target = move ? slope * 0.6 - 0.12 : -0.75 * clamp(above / 8, 0, 1) * narrow - 0.1;
-    cam.pitch = lerp(cam.pitch, target, Math.min(1, dt * (move ? 3 : 1.2)));
+    cam.pitch = player.pitch;
     cam.roll = Math.sin(performance.now() / 900) * 0.012 * narrow;
 
     if (!onArch.poemShown && at.u > 0.35 && at.u < 0.65) {
@@ -803,10 +925,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     // step off beside the foot, keeping the statue to one side
     const side = 1.9 * (Math.random() < 0.5 ? -1 : 1);
     const p = { x: ft.x + (tan.x / hl) * out * 0.4 - (tan.z / hl) * side, z: ft.z + (tan.z / hl) * out * 0.4 + (tan.x / hl) * side };
-    if (end !== onArch.from) {
-      stats.arches++;
-      $("#walked").textContent = `${stats.arches} arch${stats.arches === 1 ? "" : "es"}`;
-    }
+    if (end !== onArch.from) stats.arches++;
     player.L = ft.plaza.level;
     collide(p, player.L);
     player.x = p.x; player.z = p.z;
@@ -819,9 +938,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   function orbitPose(a) {
-    const c = { x: 18, y: 12, z: -28 };
-    const x = c.x + Math.cos(a) * 92, z = c.z + Math.sin(a) * 92, y = 58;
-    return { x, y, z, yaw: yawOf(c.x - x, c.z - z), pitch: Math.atan2(c.y - y, 92), roll: 0 };
+    const c = { x: 20, y: 12, z: -34 };
+    const x = c.x + Math.cos(a) * 105, z = c.z + Math.sin(a) * 105, y = 64;
+    return { x, y, z, yaw: yawOf(c.x - x, c.z - z), pitch: Math.atan2(c.y - y, 105), roll: 0 };
   }
 
   // ---- transitions --------------------------------------------------------
@@ -867,7 +986,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     $("#w-time").textContent = fmtTime(stats.time);
     $("#w-arches").textContent = stats.arches;
     $("#w-plazas").textContent = stats.plazas.size;
-    orbit = Math.atan2(player.z + 28, player.x - 18);
+    orbit = Math.atan2(player.z + 34, player.x - 20);
     tweenTo(orbitPose(orbit), 6, () => {
       mode = "won";
       const w = $("#won");
@@ -911,7 +1030,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       mode = "ground";
       running = true;
       refreshActions();
-      showHint("Drag anywhere: up to walk, sideways to turn", 7000);
+      showHint("Left side: drag to walk and turn. Right side: drag to look around.", 8000);
     });
   }
 
@@ -920,7 +1039,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     w.classList.add("fade");
     setTimeout(() => { w.hidden = true; }, 1200);
     buildWorld();
-    $("#walked").textContent = "0 arches";
     start();
   }
 
@@ -968,17 +1086,28 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   // ---- input ----------------------------------------------------------------
   const canvas = $("#c"), joyEl = $("#joy"), knob = $("#knob");
   canvas.addEventListener("pointerdown", (e) => {
-    if (joy.id !== null) return;
-    Object.assign(joy, { id: e.pointerId, ox: e.clientX, oy: e.clientY, dx: 0, dy: 0 });
-    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    if (mode === "ground" || mode === "arch") {
+    if (mode !== "ground" && mode !== "arch") return;
+    if (e.clientX < window.innerWidth / 2) {
+      if (joy.id !== null) return;
+      Object.assign(joy, { id: e.pointerId, ox: e.clientX, oy: e.clientY, dx: 0, dy: 0 });
       joyEl.style.left = e.clientX + "px";
       joyEl.style.top = e.clientY + "px";
       knob.style.transform = "";
       joyEl.hidden = false;
+    } else {
+      if (look.id !== null) return;
+      Object.assign(look, { id: e.pointerId, lx: e.clientX, ly: e.clientY });
     }
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   });
   canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerId === look.id) {
+      player.yaw -= (e.clientX - look.lx) * LOOK;
+      player.pitch = clamp(player.pitch - (e.clientY - look.ly) * LOOK, -1.35, 0.9);
+      look.lx = e.clientX; look.ly = e.clientY;
+      hideHint();
+      return;
+    }
     if (e.pointerId !== joy.id) return;
     let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
     const m = Math.hypot(dx, dy);
@@ -987,6 +1116,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
   });
   const release = (e) => {
+    if (e.pointerId === look.id) look.id = null;
     if (e.pointerId !== joy.id) return;
     joy.id = null; joy.dx = joy.dy = 0;
     joyEl.hidden = true;
