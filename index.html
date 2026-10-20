@@ -1,0 +1,867 @@
+<title>Mazes and Bridges</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,300;1,400&family=Josefin+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: full-bleed 3D canvas; thin HUD on top, context actions at the thumb line, overlays for intro and ending. Single dusk look by design. */
+:root {
+  --night: #1b1f3a;
+  --dusk: #6b5a8e;
+  --ember: #f2a77f;
+  --gold: #ffd28a;
+  --mist: #f1ebf7;
+  --veil: rgba(27, 31, 58, 0.55);
+  --f-poem: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --f-ui: "Josefin Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; background: var(--night); color: var(--mist); overflow: hidden; overscroll-behavior: none; }
+body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+.hud {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 2;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  font: 600 11px/1 var(--f-ui); letter-spacing: 0.2em; text-transform: uppercase;
+  pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+}
+.hud .stats { display: flex; gap: 12px; white-space: nowrap; align-items: center; font-variant-numeric: tabular-nums; }
+.hud button { pointer-events: auto; }
+
+.btn {
+  font: 600 12px/1 var(--f-ui); letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--mist); background: var(--veil);
+  border: 1px solid rgba(241, 235, 247, 0.45); border-radius: 2px;
+  padding: 15px 20px 13px; cursor: pointer;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: background 0.2s, border-color 0.2s;
+}
+.btn:hover { background: rgba(107, 90, 142, 0.6); }
+.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.btn.primary { border-color: var(--gold); color: var(--gold); }
+.btn.bridge { padding: 11px 12px 9px; font-size: 10px; flex: 0 1 calc(50% - 5px); max-width: 190px; }
+.btn.small { padding: 9px 11px 7px; font-size: 10px; white-space: nowrap; }
+
+.actions {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 26px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  pointer-events: none;
+}
+.actions .btn { pointer-events: auto; animation: rise 0.6s ease-out both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+.poem {
+  position: fixed; left: 0; right: 0; top: 18%; z-index: 1;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+  text-align: center; text-wrap: balance;
+  font: italic 300 clamp(24px, 5.4vw, 38px)/1.2 var(--f-poem);
+  color: var(--mist); text-shadow: 0 2px 18px rgba(27, 31, 58, 0.7);
+  opacity: 0; transition: opacity 2.4s ease; pointer-events: none;
+}
+.poem.on { opacity: 1; }
+
+.hint {
+  position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 1;
+  text-align: center; font: 400 12px/1.4 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase;
+  opacity: 0.85; transition: opacity 1.5s; pointer-events: none; padding: 0 16px;
+}
+.hint.off { opacity: 0; }
+
+.joy { position: fixed; width: 116px; height: 116px; margin: -58px 0 0 -58px; border-radius: 50%;
+  border: 1px solid rgba(241, 235, 247, 0.4); pointer-events: none; z-index: 1; }
+.joy i { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+  background: rgba(255, 210, 138, 0.35); border: 1px solid var(--gold); }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 3;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: 18px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 32px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 40px);
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+  background: linear-gradient(to top, rgba(27, 31, 58, 0.92) 0%, rgba(27, 31, 58, 0.55) 45%, rgba(27, 31, 58, 0) 75%);
+  transition: opacity 1.2s ease;
+}
+.overlay.fade { opacity: 0; pointer-events: none; }
+.overlay h1 {
+  margin: 0; font: italic 300 clamp(46px, 13vw, 92px)/0.92 var(--f-poem); letter-spacing: -0.01em; text-wrap: balance;
+}
+.overlay h1 span { font-style: normal; color: var(--gold); }
+.overlay p { margin: 0; max-width: 34em; font: 400 19px/1.45 var(--f-poem); color: var(--mist); opacity: 0.92; text-wrap: pretty; }
+.overlay .meta { font: 400 11px/1.6 var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.75; }
+.overlay dl { display: grid; grid-template-columns: auto auto; gap: 6px 22px; margin: 0; font: 400 13px/1.3 var(--f-ui); letter-spacing: 0.12em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.overlay dt { opacity: 0.7; }
+.overlay dd { margin: 0; color: var(--gold); }
+.err { font: 400 15px/1.5 var(--f-ui); }
+
+@media (prefers-reduced-motion: reduce) {
+  .poem, .overlay, .hint { transition: none; }
+  .actions .btn { animation: none; }
+}
+</style>
+
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <span>Mazes &amp; Bridges</span>
+  <span class="stats">
+    <span id="clock">0:00</span>
+    <span id="climbs">0 lookouts</span>
+    <button class="btn small" id="mute" type="button" aria-pressed="false">Wind on</button>
+  </span>
+</div>
+
+<div class="poem" id="poem"></div>
+<div class="hint off" id="hint">Drag anywhere: up to walk, sideways to turn</div>
+<div class="joy" id="joy" hidden><i id="knob"></i></div>
+<div class="actions" id="actions"></div>
+
+<section class="overlay" id="intro">
+  <h1>Mazes <span>&amp;</span><br>Bridges</h1>
+  <p>Find your way out of the hedge maze. Pale towers rise along the way. Climb one to see the maze from above, and cross the rope bridges strung between them.</p>
+  <span class="meta">Drag to walk and turn &middot; arrow keys or WASD on a keyboard</span>
+  <button class="btn primary" id="enter" type="button">Enter the maze</button>
+</section>
+
+<section class="overlay fade" id="won" hidden>
+  <h1>You walked<br><span>out.</span></h1>
+  <dl>
+    <dt>Time in the maze</dt><dd id="w-time">0:00</dd>
+    <dt>Lookouts climbed</dt><dd id="w-climbs">0</dd>
+    <dt>Bridges crossed</dt><dd id="w-bridges">0</dd>
+  </dl>
+  <button class="btn primary" id="again" type="button">Walk a new maze</button>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+
+  // ---- world constants -------------------------------------------------
+  const N = 13;            // cells per side
+  const CS = 4;            // cell size (world units ~ metres)
+  const WT = 0.5;          // hedge thickness
+  const WH = 3.2;          // hedge height
+  const HALF = (N * CS) / 2;
+  const TOWER_H = 16;
+  const DECK = TOWER_H + 0.15;
+  const EYE = 1.6;
+  const TOP_EYE = DECK + EYE;
+  const PLAT_R = 1.4;      // where you stand on a platform
+  const PLAYER_R = 0.3;
+  const TOWER_R = 0.85;
+  const SPEED = 3.4, TURN = 2.2;
+  const FOG_LOW = 0.05, FOG_HIGH = 0.011;
+
+  const POEMS = [
+    "From up here the walls are only handwriting.",
+    "The way out was drawn long before you arrived.",
+    "Each wrong turn was part of the shape.",
+    "The light does not move. You do.",
+    "Below, the hedges repeat the same few words.",
+    "Distance is easier to forgive from above.",
+    "The wind has never needed a map.",
+    "What was a wall is now a line of shadow.",
+  ];
+  const WINDS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+
+  // ---- helpers ---------------------------------------------------------
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const smooth = (t) => t * t * (3 - 2 * t);
+  const wrapPi = (a) => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+  const lerpAngle = (a, b, t) => a + wrapPi(b - a) * t;
+  const yawOf = (dx, dz) => Math.atan2(-dx, -dz);
+  const cellCenter = (x, y) => ({ x: (x + 0.5) * CS - HALF, z: (y + 0.5) * CS - HALF });
+  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const compass = (dx, dz) => WINDS[((Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) % 8) + 8) % 8];
+
+  // ---- renderer / scene -------------------------------------------------
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas: $("#c"), antialias: true });
+  } catch (e) {
+    $("#intro").innerHTML = '<p class="err">This browser could not start WebGL, which the maze needs. Try a recent Chrome, Safari or Firefox.</p>';
+    return;
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0xe39f88, FOG_LOW);
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 900);
+  camera.rotation.order = "YXZ";
+
+  function glowTexture() {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d");
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, "rgba(255,255,255,1)");
+    grd.addColorStop(0.25, "rgba(255,255,255,0.55)");
+    grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  }
+  const GLOW = glowTexture();
+
+  // sky dome: indigo zenith, lavender band, apricot horizon, low sun
+  const sunDir = new THREE.Vector3(-0.55, 0.1, -0.83).normalize();
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(500, 32, 16),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: {
+        zen: { value: new THREE.Color(0x1b1f3a) },
+        mid: { value: new THREE.Color(0x6b5a8e) },
+        hor: { value: new THREE.Color(0xe39f88) },
+        sun: { value: sunDir },
+      },
+      vertexShader: "varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: [
+        "uniform vec3 zen, mid, hor, sun; varying vec3 vDir;",
+        "void main(){",
+        "  float h = vDir.y;",
+        "  vec3 c = mix(hor, mid, smoothstep(0.0, 0.22, h));",
+        "  c = mix(c, zen, smoothstep(0.22, 0.85, h));",
+        "  c = mix(c, hor * 0.6, smoothstep(0.0, -0.35, h));",
+        "  float s = max(dot(vDir, normalize(sun)), 0.0);",
+        "  c += vec3(1.0, 0.82, 0.58) * (pow(s, 900.0) * 1.6 + pow(s, 14.0) * 0.3);",
+        "  gl_FragColor = vec4(c, 1.0);",
+        "}",
+      ].join("\n"),
+    })
+  );
+  scene.add(sky);
+
+  scene.add(new THREE.HemisphereLight(0xb7a5dc, 0x2b2233, 0.8));
+  const sunLight = new THREE.DirectionalLight(0xffc29a, 0.95);
+  sunLight.position.set(-0.55, 0.5, -0.7).normalize().multiplyScalar(70);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(2048, 2048);
+  Object.assign(sunLight.shadow.camera, { left: -44, right: 44, top: 44, bottom: -44, near: 1, far: 200 });
+  sunLight.shadow.bias = -0.0006;
+  sunLight.shadow.normalBias = 0.03;
+  scene.add(sunLight, sunLight.target);
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshLambertMaterial({ color: 0x3a3346 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // drifting motes, the same in every maze
+  const MOTES = 380;
+  const motePos = new Float32Array(MOTES * 3);
+  const moteBase = [];
+  for (let i = 0; i < MOTES; i++) {
+    moteBase.push({ x: (Math.random() - 0.5) * N * CS * 1.3, y: 0.4 + Math.random() * 9, z: (Math.random() - 0.5) * N * CS * 1.3, p: Math.random() * 6.28 });
+  }
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
+  const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+    size: 0.16, map: GLOW, color: 0xffd9a8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  scene.add(motes);
+
+  // ---- maze ------------------------------------------------------------
+  // h[j][i]: hedge on the line z=j along cell column i; v[j][i]: hedge on the line x=i along cell row j
+  function genMaze() {
+    const h = Array.from({ length: N + 1 }, () => Array(N).fill(true));
+    const v = Array.from({ length: N }, () => Array(N + 1).fill(true));
+    const open = (x, y, nx, ny) => { if (nx === x) h[Math.max(y, ny)][x] = false; else v[y][Math.max(x, nx)] = false; };
+    const seen = Array.from({ length: N }, () => Array(N).fill(false));
+    const stack = [[0, 0]];
+    seen[0][0] = true;
+    while (stack.length) {
+      const [x, y] = stack[stack.length - 1];
+      const nb = [];
+      if (y > 0 && !seen[y - 1][x]) nb.push([x, y - 1]);
+      if (y < N - 1 && !seen[y + 1][x]) nb.push([x, y + 1]);
+      if (x > 0 && !seen[y][x - 1]) nb.push([x - 1, y]);
+      if (x < N - 1 && !seen[y][x + 1]) nb.push([x + 1, y]);
+      if (!nb.length) { stack.pop(); continue; }
+      const [nx, ny] = nb[(Math.random() * nb.length) | 0];
+      open(x, y, nx, ny);
+      seen[ny][nx] = true;
+      stack.push([nx, ny]);
+    }
+    // a few loops so it is less of a pure tree
+    for (let k = 0; k < N; k++) {
+      const x = 1 + ((Math.random() * (N - 2)) | 0), y = 1 + ((Math.random() * (N - 2)) | 0);
+      if (Math.random() < 0.5) h[y][x] = false; else v[y][x] = false;
+    }
+    h[N][N - 1] = false; // the exit, south side of the far corner
+    return { h, v };
+  }
+  const openSides = (m, x, y) => {
+    const s = [];
+    if (!m.h[y][x]) s.push({ dx: 0, dz: -1 });
+    if (!m.h[y + 1][x]) s.push({ dx: 0, dz: 1 });
+    if (!m.v[y][x]) s.push({ dx: -1, dz: 0 });
+    if (!m.v[y][x + 1]) s.push({ dx: 1, dz: 0 });
+    return s;
+  };
+
+  // ---- game state -------------------------------------------------------
+  let world = null, maze, boxes, towers, bridges, exitPt, trail, beam;
+  const player = { x: 0, z: 0, yaw: 0, bob: 0 };
+  const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6 };
+  const view = { yaw: 0, pitch: -0.5 };
+  let mode = "intro";      // intro | ground | top | won | anim
+  let anim = null;
+  let topTower = null, topAngle = 0, nearTower = null;
+  let orbit = 0.6;
+  const stats = { time: 0, climbs: 0, bridges: 0 };
+  let lastTrail = null;
+  let poemIdx = (Math.random() * POEMS.length) | 0;
+  let running = false;
+
+  function disposeWorld() {
+    if (!world) return;
+    scene.remove(world);
+    world.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  }
+
+  function buildWorld() {
+    disposeWorld();
+    world = new THREE.Group();
+    scene.add(world);
+    maze = genMaze();
+    boxes = [];
+
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(N * CS, N * CS), new THREE.MeshLambertMaterial({ color: 0x5b4a57 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.01;
+    floor.receiveShadow = true;
+    world.add(floor);
+
+    // hedges
+    const segs = [];
+    for (let j = 0; j <= N; j++) for (let i = 0; i < N; i++)
+      if (maze.h[j][i]) segs.push({ x: (i + 0.5) * CS - HALF, z: j * CS - HALF, sx: CS + WT, sz: WT });
+    for (let j = 0; j < N; j++) for (let i = 0; i <= N; i++)
+      if (maze.v[j][i]) segs.push({ x: i * CS - HALF, z: (j + 0.5) * CS - HALF, sx: WT, sz: CS + WT });
+    const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), segs.length);
+    const d = new THREE.Object3D();
+    const base = new THREE.Color(0x3f5c4c), col = new THREE.Color();
+    segs.forEach((s, i) => {
+      const hgt = WH + Math.random() * 0.45;
+      d.position.set(s.x, hgt / 2, s.z);
+      d.scale.set(s.sx, hgt, s.sz);
+      d.updateMatrix();
+      hedges.setMatrixAt(i, d.matrix);
+      col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
+      hedges.setColorAt(i, col);
+      boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 });
+    });
+    hedges.castShadow = hedges.receiveShadow = true;
+    world.add(hedges);
+
+    // lookout towers, roughly spread across the maze
+    const anchors = [[3, 3], [9, 2], [6, 6], [2, 9], [10, 9]];
+    towers = anchors.map(([ax, ay], idx) => {
+      const cx = clamp(ax + ((Math.random() * 3) | 0) - 1, 1, N - 2);
+      const cy = clamp(ay + ((Math.random() * 3) | 0) - 1, 1, N - 2);
+      const c = cellCenter(cx, cy);
+      return { idx, cx, cy, x: c.x, z: c.z, links: [] };
+    });
+    const stone = new THREE.MeshLambertMaterial({ color: 0xe9e1d8 });
+    const rail = new THREE.MeshLambertMaterial({ color: 0xd8c8b4 });
+    towers.forEach((t) => {
+      const g = new THREE.Group();
+      g.position.set(t.x, 0, t.z);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.55, TOWER_R, TOWER_H, 14), stone);
+      shaft.position.y = TOWER_H / 2;
+      const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.45, 0.3, 28), stone);
+      plat.position.y = TOWER_H;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.04, 6, 40), rail);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = DECK + 0.9;
+      [shaft, plat, ring].forEach((m) => { m.castShadow = true; m.receiveShadow = true; g.add(m); });
+      for (let k = 1; k <= 3; k++) {
+        const band = new THREE.Mesh(new THREE.TorusGeometry(lerp(TOWER_R, 0.55, k / 4) + 0.03, 0.05, 6, 24), rail);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = (TOWER_H * k) / 4;
+        g.add(band);
+      }
+      const lamp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffd28a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      lamp.position.y = DECK + 3.2;
+      lamp.scale.set(3, 3, 3);
+      t.lamp = lamp;
+      g.add(lamp);
+      world.add(g);
+    });
+
+    // rope bridges: a minimum spanning tree, so every lookout is reachable without clutter
+    bridges = [];
+    const linked = [towers[0]];
+    while (linked.length < towers.length) {
+      let best = null;
+      for (const a of linked) for (const b of towers) {
+        if (linked.includes(b)) continue;
+        const d = Math.hypot(b.x - a.x, b.z - a.z);
+        if (!best || d < best.d) best = { a, b, d };
+      }
+      linked.push(best.b);
+      bridges.push(makeBridge(best.a, best.b));
+    }
+
+    // the exit, marked by a column of light just outside the hedge
+    const ec = cellCenter(N - 1, N - 1);
+    exitPt = { x: ec.x, z: ec.z + CS };
+    beam = new THREE.Group();
+    beam.position.set(exitPt.x, 0, exitPt.z);
+    [[0.35, 0.5], [1.3, 0.12]].forEach(([r, o]) => {
+      beam.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, 120, 20, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })));
+    });
+    beam.children.forEach((m) => { m.position.y = 60; });
+    world.add(beam);
+
+    // footsteps, glowing faintly so they read from above
+    const tp = new Float32Array(4000 * 3);
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute("position", new THREE.BufferAttribute(tp, 3));
+    tg.setDrawRange(0, 0);
+    trail = new THREE.Points(tg, new THREE.PointsMaterial({ size: 0.5, map: GLOW, color: 0xffc98a, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+    trail.frustumCulled = false;
+    trail.count = 0;
+    world.add(trail);
+
+    // start in the opposite corner, facing an open side
+    const s = cellCenter(0, 0);
+    const side = openSides(maze, 0, 0).find((o) => o.dx > 0 || o.dz > 0) || { dx: 1, dz: 0 };
+    Object.assign(player, { x: s.x, z: s.z, yaw: yawOf(side.dx, side.dz), bob: 0 });
+    Object.assign(stats, { time: 0, climbs: 0, bridges: 0 });
+    lastTrail = null;
+    nearTower = topTower = null;
+  }
+
+  function makeBridge(a, b) {
+    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+    const ux = dx / len, uz = dz / len;
+    const p0 = new THREE.Vector3(a.x + ux * PLAT_R, DECK, a.z + uz * PLAT_R);
+    const p2 = new THREE.Vector3(b.x - ux * PLAT_R, DECK, b.z - uz * PLAT_R);
+    const mid = p0.clone().add(p2).multiplyScalar(0.5);
+    mid.y -= len * 0.12;
+    const curve = new THREE.QuadraticBezierCurve3(p0, mid, p2);
+    const n = Math.floor(curve.getLength() / 0.42);
+    const planks = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 0.07, 0.3), new THREE.MeshLambertMaterial({ color: 0x8c6c58 }), n + 1);
+    const d = new THREE.Object3D();
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, p = curve.getPoint(t), tan = curve.getTangent(t);
+      d.position.copy(p);
+      d.lookAt(p.clone().add(tan));
+      d.rotateZ((Math.random() - 0.5) * 0.06);
+      d.updateMatrix();
+      planks.setMatrixAt(i, d.matrix);
+    }
+    planks.castShadow = true;
+    world.add(planks);
+    const ropeMat = new THREE.MeshLambertMaterial({ color: 0xdcc9b2 });
+    [-0.58, 0.58].forEach((s) => {
+      const off = new THREE.Vector3(-uz * s, 0.85, ux * s);
+      const rope = new THREE.QuadraticBezierCurve3(p0.clone().add(off), mid.clone().add(off).add(new THREE.Vector3(0, len * 0.02, 0)), p2.clone().add(off));
+      world.add(new THREE.Mesh(new THREE.TubeGeometry(rope, 48, 0.03, 5), ropeMat));
+    });
+    const br = { a, b, curve };
+    a.links.push(br);
+    b.links.push(br);
+    return br;
+  }
+
+  // ---- movement & collision ----------------------------------------------
+  function collide(p) {
+    for (let pass = 0; pass < 2; pass++) {
+      for (const b of boxes) {
+        const cx = clamp(p.x, b.x0, b.x1), cz = clamp(p.z, b.z0, b.z1);
+        const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
+        if (d2 < PLAYER_R * PLAYER_R && d2 > 1e-9) {
+          const d = Math.sqrt(d2), push = (PLAYER_R - d) / d;
+          p.x += dx * push; p.z += dz * push;
+        }
+      }
+      for (const t of towers) {
+        const dx = p.x - t.x, dz = p.z - t.z, d = Math.hypot(dx, dz), min = TOWER_R + PLAYER_R;
+        if (d < min && d > 1e-6) { p.x = t.x + (dx / d) * min; p.z = t.z + (dz / d) * min; }
+      }
+    }
+  }
+
+  const keys = new Set();
+  const joy = { id: null, ox: 0, oy: 0, lx: 0, ly: 0, dx: 0, dy: 0 };
+  const JR = 58;
+
+  function updateGround(dt) {
+    let f = 0, t = 0;
+    if (joy.id !== null) {
+      f = -joy.dy / JR; t = -joy.dx / JR;
+      if (Math.abs(f) < 0.15) f = 0;
+      if (Math.abs(t) < 0.15) t = 0;
+    }
+    if (keys.has("ArrowUp") || keys.has("KeyW")) f = 1;
+    if (keys.has("ArrowDown") || keys.has("KeyS")) f = -0.7;
+    if (keys.has("ArrowLeft") || keys.has("KeyA")) t = 1;
+    if (keys.has("ArrowRight") || keys.has("KeyD")) t = -1;
+
+    player.yaw += t * TURN * dt;
+    if (f) {
+      const p = { x: player.x - Math.sin(player.yaw) * f * SPEED * dt, z: player.z - Math.cos(player.yaw) * f * SPEED * dt };
+      collide(p);
+      const moved = Math.hypot(p.x - player.x, p.z - player.z);
+      player.x = p.x; player.z = p.z;
+      player.bob += moved * 2.6;
+      if (moved > 0) $("#hint").classList.add("off");
+      dropTrail();
+    }
+    Object.assign(cam, { x: player.x, z: player.z, y: EYE + Math.sin(player.bob) * 0.035, yaw: player.yaw });
+    cam.pitch = lerp(cam.pitch, 0, Math.min(1, dt * 4));
+
+    let near = null;
+    for (const tw of towers) if (Math.hypot(player.x - tw.x, player.z - tw.z) < 1.7) near = tw;
+    if (near !== nearTower) { nearTower = near; refreshActions(); }
+
+    if (player.z > HALF + 0.6) win();
+  }
+
+  function dropTrail() {
+    if (lastTrail && Math.hypot(player.x - lastTrail.x, player.z - lastTrail.z) < 0.9) return;
+    lastTrail = { x: player.x, z: player.z };
+    const arr = trail.geometry.attributes.position;
+    const i = trail.count % arr.count;
+    arr.setXYZ(i, player.x, 0.06, player.z);
+    arr.needsUpdate = true;
+    trail.count++;
+    trail.geometry.setDrawRange(0, Math.min(trail.count, arr.count));
+  }
+
+  function updateTop(dt) {
+    if (keys.has("ArrowLeft") || keys.has("KeyA")) view.yaw += dt * 1.4;
+    if (keys.has("ArrowRight") || keys.has("KeyD")) view.yaw -= dt * 1.4;
+    if (keys.has("ArrowUp") || keys.has("KeyW")) view.pitch = clamp(view.pitch + dt, -1.45, 0.25);
+    if (keys.has("ArrowDown") || keys.has("KeyS")) view.pitch = clamp(view.pitch - dt, -1.45, 0.25);
+    Object.assign(cam, {
+      x: topTower.x + Math.cos(topAngle) * PLAT_R, z: topTower.z + Math.sin(topAngle) * PLAT_R,
+      y: TOP_EYE + Math.sin(performance.now() / 1400) * 0.03, yaw: view.yaw, pitch: view.pitch,
+    });
+  }
+
+  function orbitPose(a) {
+    const x = Math.cos(a) * 52, z = Math.sin(a) * 52, y = 34;
+    return { x, y, z, yaw: yawOf(-x, -z), pitch: Math.atan2(-y, Math.hypot(x, z)) * 0.85 };
+  }
+
+  // ---- transitions --------------------------------------------------------
+  function play(dur, step, done) {
+    mode = "anim";
+    refreshActions();
+    anim = { t: 0, dur, step, done };
+  }
+
+  function tweenTo(target, dur, done) {
+    const f = { ...cam };
+    play(dur, (k) => {
+      const e = ease(k);
+      cam.x = lerp(f.x, target.x, e); cam.y = lerp(f.y, target.y, e); cam.z = lerp(f.z, target.z, e);
+      cam.yaw = lerpAngle(f.yaw, target.yaw, e); cam.pitch = lerp(f.pitch, target.pitch, e);
+    }, done);
+  }
+
+  function climb(t) {
+    const a0 = Math.atan2(player.z - t.z, player.x - t.x);
+    const r0 = Math.hypot(player.x - t.x, player.z - t.z);
+    const turns = Math.PI * 2.5, y0 = cam.y, startYaw = cam.yaw;
+    hidePoem();
+    play(4.6, (k) => {
+      const e = ease(k), a = a0 + turns * e, r = lerp(r0, PLAT_R, e);
+      cam.x = t.x + Math.cos(a) * r; cam.z = t.z + Math.sin(a) * r; cam.y = lerp(y0, TOP_EYE, e);
+      const yawTan = yawOf(-Math.sin(a), Math.cos(a)), yawOut = yawOf(Math.cos(a), Math.sin(a));
+      cam.yaw = k < 0.15 ? lerpAngle(startYaw, yawTan, smooth(k / 0.15)) : k > 0.78 ? lerpAngle(yawTan, yawOut, smooth((k - 0.78) / 0.22)) : yawTan;
+      cam.pitch = lerp(0, -0.55, smooth(k));
+    }, () => {
+      topTower = t; topAngle = a0 + turns;
+      view.yaw = cam.yaw; view.pitch = cam.pitch;
+      stats.climbs++;
+      arriveTop();
+    });
+  }
+
+  function descend() {
+    const t = topTower;
+    const sides = openSides(maze, t.cx, t.cy);
+    const side = sides[(Math.random() * sides.length) | 0];
+    const aEnd = Math.atan2(side.dz, side.dx);
+    const diff = ((topAngle - aEnd) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const aStart = topAngle, aFinal = aStart - (diff + 2 * Math.PI);
+    const f = { ...cam };
+    hidePoem();
+    play(4.4, (k) => {
+      const e = ease(k), a = lerp(aStart, aFinal, e), r = lerp(PLAT_R, 1.4, e);
+      cam.x = t.x + Math.cos(a) * r; cam.z = t.z + Math.sin(a) * r; cam.y = lerp(TOP_EYE, EYE, e);
+      const yawTan = yawOf(Math.sin(a), -Math.cos(a)), yawOut = yawOf(Math.cos(a), Math.sin(a));
+      cam.yaw = k < 0.15 ? lerpAngle(f.yaw, yawTan, smooth(k / 0.15)) : k > 0.78 ? lerpAngle(yawTan, yawOut, smooth((k - 0.78) / 0.22)) : yawTan;
+      cam.pitch = lerp(f.pitch, 0, smooth(k));
+    }, () => {
+      Object.assign(player, { x: cam.x, z: cam.z, yaw: cam.yaw });
+      topTower = null; nearTower = null;
+      mode = "ground";
+      refreshActions();
+    });
+  }
+
+  function cross(br) {
+    const fromA = br.a === topTower, target = fromA ? br.b : br.a;
+    const at = (u) => br.curve.getPoint(fromA ? u : 1 - u);
+    const tanAt = (u) => { const v = br.curve.getTangent(fromA ? u : 1 - u); return fromA ? v : v.negate(); };
+    const f = { ...cam };
+    const p0 = at(0), t0 = tanAt(0), yaw0 = yawOf(t0.x, t0.z);
+    const dur = br.curve.getLength() / 2.4 + 1.2;
+    hidePoem();
+    play(dur, (k) => {
+      if (k < 0.12) {
+        const e = smooth(k / 0.12);
+        cam.x = lerp(f.x, p0.x, e); cam.z = lerp(f.z, p0.z, e); cam.y = lerp(f.y, p0.y + EYE, e);
+        cam.yaw = lerpAngle(f.yaw, yaw0, e); cam.pitch = lerp(f.pitch, -0.15, e);
+      } else {
+        const u = smooth((k - 0.12) / 0.88), p = at(u), tn = tanAt(u);
+        cam.x = p.x; cam.z = p.z; cam.y = p.y + EYE + Math.sin(u * 40) * 0.025;
+        cam.yaw = yawOf(tn.x, tn.z); cam.pitch = -0.15;
+      }
+    }, () => {
+      topTower = target;
+      topAngle = Math.atan2(cam.z - target.z, cam.x - target.x);
+      view.yaw = cam.yaw; view.pitch = cam.pitch;
+      stats.bridges++;
+      arriveTop();
+    });
+  }
+
+  function arriveTop() {
+    mode = "top";
+    $("#climbs").textContent = `${stats.climbs} lookout${stats.climbs === 1 ? "" : "s"}`;
+    poemIdx = (poemIdx + 1) % POEMS.length;
+    $("#poem").textContent = POEMS[poemIdx];
+    $("#poem").classList.add("on");
+    refreshActions();
+  }
+  function hidePoem() { $("#poem").classList.remove("on"); }
+
+  function win() {
+    mode = "won";
+    running = false;
+    hidePoem();
+    $("#w-time").textContent = fmtTime(stats.time);
+    $("#w-climbs").textContent = stats.climbs;
+    $("#w-bridges").textContent = stats.bridges;
+    orbit = Math.atan2(player.z, player.x);
+    tweenTo(orbitPose(orbit), 5, () => {
+      mode = "won";
+      const w = $("#won");
+      w.hidden = false;
+      requestAnimationFrame(() => w.classList.remove("fade"));
+    });
+  }
+
+  // ---- UI -------------------------------------------------------------------
+  function button(label, fn, cls) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn" + (cls ? " " + cls : "");
+    b.textContent = label;
+    b.addEventListener("click", () => { initAudio(); fn(); });
+    $("#actions").append(b);
+  }
+
+  function refreshActions() {
+    $("#actions").innerHTML = "";
+    if (mode === "ground" && nearTower) button("Climb the lookout", () => climb(nearTower), "primary");
+    if (mode === "top") {
+      topTower.links.forEach((br) => {
+        const o = br.a === topTower ? br.b : br.a;
+        button(`Bridge ${compass(o.x - topTower.x, o.z - topTower.z)}`, () => cross(br), "bridge");
+      });
+      button("Climb down", descend, "primary");
+    }
+  }
+
+  function start() {
+    initAudio();
+    const intro = $("#intro");
+    intro.classList.add("fade");
+    setTimeout(() => { intro.hidden = true; }, 1200);
+    const target = { x: player.x, y: EYE, z: player.z, yaw: player.yaw, pitch: 0 };
+    tweenTo(target, 4.2, () => {
+      mode = "ground";
+      running = true;
+      refreshActions();
+      const hint = $("#hint");
+      hint.classList.remove("off");
+      setTimeout(() => hint.classList.add("off"), 7000);
+    });
+  }
+
+  function again() {
+    const w = $("#won");
+    w.classList.add("fade");
+    setTimeout(() => { w.hidden = true; }, 1200);
+    buildWorld();
+    $("#climbs").textContent = "0 lookouts";
+    start();
+  }
+
+  $("#enter").addEventListener("click", start);
+  $("#again").addEventListener("click", again);
+
+  // ---- wind ---------------------------------------------------------------
+  let audio = null, muted = false;
+  function initAudio() {
+    if (audio) { if (audio.ac.state === "suspended") audio.ac.resume(); return; }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ac = new AC();
+      const len = ac.sampleRate * 4, buf = ac.createBuffer(1, len, ac.sampleRate), data = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; data[i] = last * 3.5; }
+      const src = ac.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      const filt = ac.createBiquadFilter();
+      filt.type = "lowpass"; filt.frequency.value = 520; filt.Q.value = 0.8;
+      const lfo = ac.createOscillator(), lfoGain = ac.createGain();
+      lfo.frequency.value = 0.07; lfoGain.gain.value = 320;
+      lfo.connect(lfoGain).connect(filt.frequency);
+      const g = ac.createGain();
+      g.gain.value = 0;
+      src.connect(filt).connect(g).connect(ac.destination);
+      src.start(); lfo.start();
+      audio = { ac, g, level: -1 };
+    } catch (e) { audio = null; }
+  }
+  function setWind(level) {
+    if (!audio) return;
+    const v = muted ? 0 : level;
+    if (Math.abs(v - audio.level) < 0.01) return;
+    audio.level = v;
+    audio.g.gain.setTargetAtTime(v, audio.ac.currentTime, 0.8);
+  }
+  $("#mute").addEventListener("click", () => {
+    muted = !muted;
+    initAudio();
+    $("#mute").textContent = muted ? "Wind off" : "Wind on";
+    $("#mute").setAttribute("aria-pressed", String(muted));
+  });
+
+  // ---- input ----------------------------------------------------------------
+  const canvas = $("#c"), joyEl = $("#joy"), knob = $("#knob");
+  canvas.addEventListener("pointerdown", (e) => {
+    if (joy.id !== null) return;
+    Object.assign(joy, { id: e.pointerId, ox: e.clientX, oy: e.clientY, lx: e.clientX, ly: e.clientY, dx: 0, dy: 0 });
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    if (mode === "ground") {
+      joyEl.style.left = e.clientX + "px";
+      joyEl.style.top = e.clientY + "px";
+      knob.style.transform = "";
+      joyEl.hidden = false;
+    }
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== joy.id) return;
+    if (mode === "top") {
+      view.yaw += (e.clientX - joy.lx) * 0.005;
+      view.pitch = clamp(view.pitch + (e.clientY - joy.ly) * 0.005, -1.45, 0.25);
+    }
+    joy.lx = e.clientX; joy.ly = e.clientY;
+    let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
+    const m = Math.hypot(dx, dy);
+    if (m > JR) { dx *= JR / m; dy *= JR / m; }
+    joy.dx = dx; joy.dy = dy;
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+  const release = (e) => {
+    if (e.pointerId !== joy.id) return;
+    joy.id = null; joy.dx = joy.dy = 0;
+    joyEl.hidden = true;
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+
+  window.addEventListener("keydown", (e) => {
+    keys.add(e.code);
+    if (e.code.startsWith("Arrow")) e.preventDefault();
+    if ((e.code === "Space" || e.code === "Enter") && e.target === document.body) {
+      const first = $("#actions .btn.primary") || $("#actions .btn");
+      if (first) { e.preventDefault(); first.click(); }
+    }
+  });
+  window.addEventListener("keyup", (e) => keys.delete(e.code));
+  window.addEventListener("blur", () => keys.clear());
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.fov = w < h ? 78 : 66;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- loop -----------------------------------------------------------------
+  buildWorld();
+  Object.assign(cam, orbitPose(orbit));
+  let last = performance.now();
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    if (anim) {
+      anim.t += dt;
+      const k = Math.min(1, anim.t / anim.dur);
+      anim.step(k);
+      if (k >= 1) { const a = anim; anim = null; a.done(); }
+    } else if (mode === "ground") updateGround(dt);
+    else if (mode === "top") updateTop(dt);
+    else if (mode === "intro" || mode === "won") { orbit += dt * 0.03; Object.assign(cam, orbitPose(orbit)); }
+
+    if (running) {
+      stats.time += dt;
+      $("#clock").textContent = fmtTime(stats.time);
+    }
+
+    camera.position.set(cam.x, cam.y, cam.z);
+    camera.rotation.set(cam.pitch, cam.yaw, 0);
+    sky.position.copy(camera.position);
+
+    // the higher you are, the thinner the mist and the louder the wind
+    const lift = clamp((cam.y - EYE) / (TOP_EYE - EYE), 0, 1);
+    scene.fog.density = lerp(FOG_LOW, FOG_HIGH, smooth(lift));
+    setWind(lerp(0.05, 0.28, lift));
+
+    const s = now / 1000;
+    for (let i = 0; i < MOTES; i++) {
+      const b = moteBase[i];
+      motePos[i * 3] = b.x + Math.sin(s * 0.21 + b.p) * 1.4;
+      motePos[i * 3 + 1] = b.y + Math.sin(s * 0.5 + b.p * 2) * 0.5;
+      motePos[i * 3 + 2] = b.z + Math.cos(s * 0.17 + b.p) * 1.4;
+    }
+    moteGeo.attributes.position.needsUpdate = true;
+    towers.forEach((t, i) => { const k = 2.8 + Math.sin(s * 1.3 + i) * 0.35; t.lamp.scale.set(k, k, k); });
+    beam.children[1].material.opacity = 0.1 + Math.sin(s * 1.7) * 0.04;
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
