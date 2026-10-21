@@ -121,6 +121,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   <span>Mazes &amp; Bridges</span>
   <span class="stats">
     <span id="clock">0:00</span>
+    <span id="speed" hidden></span>
     <span id="found">0 plazas</span>
     <button class="btn small" id="mute" type="button" aria-pressed="false">Wind on</button>
   </span>
@@ -150,6 +151,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="movement.js"></script>
 <script>
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -165,7 +167,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const FOOT = 2.8;        // arch foot distance from the plaza centre
   const RAIL = 1.1;        // height of the stone parapet around a plaza
   const WIN_H = WH + 0.25; // height of a hedge with a window cut through it
-  const SPEED = 3.4, TURN = 2.2, ARCH_SPEED = 3.0, LOOK = 0.005;
+  const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
+  const motion = { v: 0, dir: 0 };
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
 
   // three terraces, each higher and smaller, overlapping at the corners.
@@ -888,12 +891,41 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     return out;
   }
 
+  // metres of straight corridor ahead (in the direction walked) before a junction, bend or dead end
+  function straightAhead(L, x, z, yaw) {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    if (Math.max(Math.abs(fx), Math.abs(fz)) < 0.8) return 0; // not lined up with a corridor
+    const dx = Math.abs(fx) > Math.abs(fz) ? Math.sign(fx) : 0, dz = dx ? 0 : Math.sign(fz);
+    const ox = L.cx - L.half, oz = L.cz - L.half, m = L.maze;
+    const i0 = Math.floor((x - ox) / CS), j0 = Math.floor((z - oz) / CS);
+    const straight = (i, j) => {
+      if (i < 0 || j < 0 || i >= L.n || j >= L.n) return false;
+      const n = !m.h[j][i], s = !m.h[j + 1][i], w = !m.v[j][i], e = !m.v[j][i + 1];
+      return dx ? (w && e && !n && !s) : (n && s && !w && !e);
+    };
+    if (!straight(i0, j0)) return 0;
+    // what is left of the current cell, then whole cells while the corridor runs straight
+    let run = dx ? (ox + (i0 + 0.5) * CS - x) * dx + CS / 2 : (oz + (j0 + 0.5) * CS - z) * dz + CS / 2;
+    for (let i = i0 + dx, j = j0 + dz; straight(i, j) && run < 60; i += dx, j += dz) run += CS;
+    return run;
+  }
+
+  function showSpeed(v) {
+    const el = $("#speed");
+    el.hidden = !MOVEMENT.config.showSpeed;
+    if (!el.hidden) el.textContent = `${v.toFixed(1)} m/s`;
+  }
+
   function updateGround(dt) {
     const { f, t } = readInput();
     player.yaw += t * TURN * dt;
     const L = player.L;
-    if (f) {
-      const p = { x: player.x - Math.sin(player.yaw) * f * SPEED * dt, z: player.z - Math.cos(player.yaw) * f * SPEED * dt };
+    const sign = Math.sign(f);
+    const target = f ? MOVEMENT.groundTarget(straightAhead(L, player.x, player.z, player.yaw + (sign < 0 ? Math.PI : 0))) * Math.abs(f) : 0;
+    const v = MOVEMENT.step(motion, target, sign, dt);
+    showSpeed(v);
+    if (v) {
+      const p = { x: player.x - Math.sin(player.yaw) * sign * v * dt, z: player.z - Math.cos(player.yaw) * sign * v * dt };
       collide(p, L);
       const moved = Math.hypot(p.x - player.x, p.z - player.z);
       player.x = p.x; player.z = p.z;
@@ -970,7 +1002,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const along = (fx * tan.x + fz * tan.z) / hl;
     // walk the way you face; looking straight sideways keeps the last direction
     if (Math.abs(along) > 0.2) onArch.dir = Math.sign(along);
-    const move = f ? f * onArch.dir * ARCH_SPEED * dt : 0;
+    const sign = Math.sign(f) * onArch.dir;
+    const target = f ? MOVEMENT.archTarget(onArch.s, a.len, tan.y) * Math.abs(f) : 0;
+    const v = MOVEMENT.step(motion, target, sign, dt);
+    showSpeed(v);
+    const move = sign * v * dt;
     onArch.s += move;
     if (move) { player.bob += Math.abs(move) * 2.6; hideHint(); }
 
