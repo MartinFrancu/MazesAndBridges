@@ -163,7 +163,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const PLAYER_R = 0.3;
   const STATUE_R = 1.6;
   const FOOT = 2.8;        // arch foot distance from the plaza centre
-  const RAIL = 1.1;        // height of plaza parapets and the low "window" walls
+  const RAIL = 1.1;        // height of the stone parapet around a plaza
+  const WIN_H = WH + 0.25; // height of a hedge with a window cut through it
   const SPEED = 3.4, TURN = 2.2, ARCH_SPEED = 3.0, LOOK = 0.005;
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
 
@@ -349,7 +350,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       else if (reg(x - 1, y) === reg(x, y)) v[y][x] = 0;
     }
     // windows: some hedges become low walls, most often along region borders and terrace edges
-    const chance = (border, edge) => (border ? 0.3 : edge ? 0.12 : 0.05);
+    const chance = (border, edge) => (border ? 0.3 : edge ? 0.12 : 0.07);
     for (let j = 0; j <= n; j++) for (let i = 0; i < n; i++) {
       if (h[j][i] !== 1) continue;
       const edge = j === 0 || j === n, border = !edge && reg(i, j - 1) !== reg(i, j);
@@ -652,6 +653,52 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     return g;
   }
 
+  // ---- windows ------------------------------------------------------------
+  // a window is a full hedge with an opening cut through it and a stone frame; each area has its own style
+  const AREA_WINDOWS = { "0-0": "gothic", "0-1": "roman", "1-0": "wide", "1-1": "oculus", "2-0": "lancets" };
+  const V2 = (x, y) => new THREE.Vector2(x, y);
+  const arc = (cx, cy, r, a0, a1, n) => Array.from({ length: n + 1 }, (_, k) => {
+    const a = a0 + ((a1 - a0) * k) / n;
+    return V2(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  });
+  // outline(s) of the opening, grown by g for the frame; x runs along the wall, y up from the floor
+  function windowHoles(type, g) {
+    switch (type) {
+      case "gothic": { // pointed arch: two arcs of radius = full width, meeting at the apex
+        const w = 0.55 + g, sill = 0.85 - g, sp = 1.9;
+        return [[V2(-w, sill), V2(w, sill), ...arc(-w, sp, 2 * w, 0, Math.PI / 3, 10), ...arc(w, sp, 2 * w, (2 * Math.PI) / 3, Math.PI, 10).slice(1)]];
+      }
+      case "roman": { // round arch
+        const w = 0.8 + g, sill = 0.85 - g, sp = 2.0;
+        return [[V2(-w, sill), V2(w, sill), ...arc(0, sp, w, 0, Math.PI, 16)]];
+      }
+      case "wide": { // a big rectangular opening with a thin frame
+        const w = 1.45 + g, y0 = 0.75 - g, y1 = 2.95 + g;
+        return [[V2(-w, y0), V2(w, y0), V2(w, y1), V2(-w, y1)]];
+      }
+      case "oculus": // a small round window at eye height
+        return [arc(0, 1.75, 0.45 + g, 0, Math.PI * 2, 24).slice(0, -1)];
+      case "lancets": // twin narrow slits with round tops
+        return [-0.45, 0.45].map((cx) => {
+          const w = 0.16 + g, sill = 0.7 - g, sp = 2.55;
+          return [V2(cx - w, sill), V2(cx + w, sill), ...arc(cx, sp, w, 0, Math.PI, 8)];
+        });
+    }
+  }
+  function windowGeometries(type) {
+    const LW = CS + WT;
+    const ext = (shapes, depth) => new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false }).translate(0, 0, -depth / 2);
+    const wall = new THREE.Shape([V2(-LW / 2, 0), V2(LW / 2, 0), V2(LW / 2, WIN_H), V2(-LW / 2, WIN_H)]);
+    const inner = windowHoles(type, 0);
+    wall.holes = inner.map((p) => new THREE.Path(p));
+    const frames = windowHoles(type, 0.12).map((outer, k) => {
+      const f = new THREE.Shape(outer);
+      f.holes = [new THREE.Path(inner[k])];
+      return f;
+    });
+    return { wall: ext(wall, WT), frame: ext(frames, WT + 0.1) };
+  }
+
   // ---- game state -------------------------------------------------------
   let world = null, arches = [], trail;
   const player = { L: LEVELS[0], x: 0, z: 0, yaw: 0, pitch: 0, bob: 0 };
@@ -714,23 +761,49 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const ox = L.cx - L.half, oz = L.cz - L.half;
       const edgeH = (i, j) => plazas.some((p) => i >= p.x && i < p.x + 3 && (j === p.y || j === p.y + 3));
       const edgeV = (i, j) => plazas.some((p) => j >= p.y && j < p.y + 3 && (i === p.x || i === p.x + 3));
+      const area = (i, j) => `${L.i}-${L.region(Math.min(i, L.n - 1), Math.min(j, L.n - 1))}`;
+      const seg = (val, edge, i, j, props) => {
+        const win = val === 2 && !edge ? AREA_WINDOWS[area(i, j)] : null;
+        segs.push({ ...props, rail: edge, win });
+      };
       for (let j = 0; j <= L.n; j++) for (let i = 0; i < L.n; i++)
-        if (L.maze.h[j][i]) segs.push({ x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, rail: L.maze.h[j][i] === 2 || edgeH(i, j) });
+        if (L.maze.h[j][i]) seg(L.maze.h[j][i], edgeH(i, j), i, j, { x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, vert: false });
       for (let j = 0; j < L.n; j++) for (let i = 0; i <= L.n; i++)
-        if (L.maze.v[j][i]) segs.push({ x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, rail: L.maze.v[j][i] === 2 || edgeV(i, j) });
-      const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), segs.length);
-      const d = new THREE.Object3D();
+        if (L.maze.v[j][i]) seg(L.maze.v[j][i], edgeV(i, j), i, j, { x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, vert: true });
       const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color(), railCol = new THREE.Color(0xd9cdc6);
-      segs.forEach((s, i) => {
+      const hedgeColor = () => col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
+      segs.forEach((s) => L.boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 }));
+
+      // windowed hedges, one instanced mesh per style
+      const d = new THREE.Object3D();
+      const byType = {};
+      segs.filter((s) => s.win).forEach((s) => (byType[s.win] = byType[s.win] || []).push(s));
+      Object.entries(byType).forEach(([type, list]) => {
+        const geo = windowGeometries(type);
+        const walls = new THREE.InstancedMesh(geo.wall, new THREE.MeshLambertMaterial({ color: 0xffffff }), list.length);
+        const frames = new THREE.InstancedMesh(geo.frame, new THREE.MeshLambertMaterial({ color: 0xe2d6cc }), list.length);
+        list.forEach((s, i) => {
+          d.position.set(s.x, L.y, s.z);
+          d.rotation.set(0, s.vert ? Math.PI / 2 : 0, 0);
+          d.updateMatrix();
+          walls.setMatrixAt(i, d.matrix);
+          frames.setMatrixAt(i, d.matrix);
+          walls.setColorAt(i, hedgeColor());
+        });
+        walls.castShadow = walls.receiveShadow = frames.castShadow = true;
+        world.add(walls, frames);
+      });
+      d.rotation.set(0, 0, 0);
+
+      const solid = segs.filter((s) => !s.win);
+      const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), solid.length);
+      solid.forEach((s, i) => {
         const hgt = s.rail ? RAIL : WH + Math.random() * 0.45;
         d.position.set(s.x, L.y + hgt / 2, s.z);
         d.scale.set(s.sx, hgt, s.sz);
         d.updateMatrix();
         hedges.setMatrixAt(i, d.matrix);
-        if (s.rail) col.copy(railCol);
-        else col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
-        hedges.setColorAt(i, col);
-        L.boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 });
+        hedges.setColorAt(i, s.rail ? col.copy(railCol) : hedgeColor());
       });
       hedges.castShadow = hedges.receiveShadow = true;
       world.add(hedges);
