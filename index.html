@@ -164,7 +164,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const EYE = 1.6;
   const PLAYER_R = 0.3;
   const STATUE_R = 1.6;
-  const FOOT = 2.8;        // arch foot distance from the plaza centre
+  const CORNER = 3.4;      // arch foot and statue sit this far (in x and z) from the plaza centre, in opposite corners
   const PLAZA_WINDOWS = 0.25; // share of a plaza's edge hedges that get a window
   const WIN_H = WH + 0.25; // height of a hedge with a window cut through it
   const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
@@ -197,7 +197,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   // the way up: c-e or d-g to the middle terrace, then hh-j to the top. Arches within a terrace are shortcuts.
   const ARCHES = [["a", "b"], ["c", "e"], ["f", "l"], ["d", "g"], ["hh", "j"]];
   // you begin on the crown of this arch, facing the first plaza
-  const START_ON = ["d", "g"];
+  const START_ON = ["a", "b"];
 
   const POEMS = [
     "From up here the walls are only handwriting.",
@@ -232,6 +232,16 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     p.cx = (p.x0 + p.x1) / 2; p.cz = (p.z0 + p.z1) / 2;
   });
   const plazaById = Object.fromEntries(PLAZAS.map((p) => [p.id, p]));
+  // the arch rises from the corner facing its other plaza; the statue stands in the opposite corner
+  PLAZAS.forEach((p) => {
+    p.sx = p.footX = p.cx; p.sz = p.footZ = p.cz;
+    const pair = ARCHES.find((x) => x.includes(p.id));
+    if (!pair) return;
+    const o = plazaById[pair[0] === p.id ? pair[1] : pair[0]];
+    const kx = Math.sign(o.cx - p.cx) || 1, kz = Math.sign(o.cz - p.cz) || 1;
+    p.footX = p.cx + kx * CORNER; p.footZ = p.cz + kz * CORNER;
+    p.sx = p.cx - kx * CORNER; p.sz = p.cz - kz * CORNER;
+  });
   const inRect = (p, x, z, m) => x > p.x0 + m && x < p.x1 - m && z > p.z0 + m && z < p.z1 - m;
 
   // ---- renderer / scene -------------------------------------------------
@@ -381,10 +391,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   // ---- arches -----------------------------------------------------------
   function archFeet(pa, pb) {
-    const dx = pb.cx - pa.cx, dz = pb.cz - pa.cz, d = Math.hypot(dx, dz), ux = dx / d, uz = dz / d;
     return [
-      { x: pa.cx + ux * FOOT, y: pa.y0, z: pa.cz + uz * FOOT, plaza: pa },
-      { x: pb.cx - ux * FOOT, y: pb.y0, z: pb.cz - uz * FOOT, plaza: pb },
+      { x: pa.footX, y: pa.y0, z: pa.footZ, plaza: pa },
+      { x: pb.footX, y: pb.y0, z: pb.footZ, plaza: pb },
     ];
   }
   // the crown rises quickly from the feet and stays broad, so long arches need not tower
@@ -402,7 +411,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       }
       for (const q of PLAZAS) {
         if (q === A.plaza || q === B.plaza) continue;
-        if (Math.hypot(p.x - q.cx, p.z - q.cz) < 3 && p.y < q.y0 + 9 && p.y > q.y0 - SLAB) return false;
+        if (Math.hypot(p.x - q.sx, p.z - q.sz) < 3 && p.y < q.y0 + 9 && p.y > q.y0 - SLAB) return false;
       }
       // arches may cross each other, but with room to walk underneath
       for (const o of arches) for (let i = 0; i < o.pts.length; i += 2) {
@@ -604,7 +613,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   function makeStatue(p) {
     const g = new THREE.Group();
-    g.position.set(p.cx, p.y0, p.cz);
+    g.position.set(p.sx, p.y0, p.sz);
     const stone = new THREE.MeshLambertMaterial({ color: 0xe8dfd4 });
     const block = (w, h, y) => {
       const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), stone);
@@ -647,7 +656,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const pair = ARCHES.find((x) => x.includes(p.id));
     if (pair) {
       const o = plazaById[pair[0] === p.id ? pair[1] : pair[0]];
-      holder.rotation.y = Math.atan2(-(o.cz - p.cz), o.cx - p.cx);
+      holder.rotation.y = Math.atan2(-(o.cz - p.sz), o.cx - p.sx);
     }
     g.add(holder);
     return g;
@@ -853,8 +862,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
         }
       }
       for (const s of L.statues) {
-        const dx = p.x - s.cx, dz = p.z - s.cz, d = Math.hypot(dx, dz), min = STATUE_R + PLAYER_R;
-        if (d < min && d > 1e-6) { p.x = s.cx + (dx / d) * min; p.z = s.cz + (dz / d) * min; }
+        const dx = p.x - s.sx, dz = p.z - s.sz, d = Math.hypot(dx, dz), min = STATUE_R + PLAYER_R;
+        if (d < min && d > 1e-6) { p.x = s.sx + (dx / d) * min; p.z = s.sz + (dz / d) * min; }
       }
     }
   }
