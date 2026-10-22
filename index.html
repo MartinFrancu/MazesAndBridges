@@ -193,10 +193,12 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     { id: "g", L: 1, x: 2, y: 1, name: "Teal Carp", color: 0x2ec9c9, animal: "carp" },
     { id: "j", L: 2, x: 5, y: 5, name: "Ivory Bear", color: 0xf0e6da, animal: "bear" },
     { id: "z", L: 2, x: 0, y: 0, name: "Lantern of the Way Out", color: 0xffe2a0, animal: "lantern", goal: true },
+    { id: "s", L: 0, x: 0, y: 12, name: "Landing", color: 0xd9c9b8, start: true },
   ];
   // the way up: a-b, c-e, hh-j. The others are detours.
   const ARCHES = [["a", "b"], ["c", "e"], ["f", "l"], ["d", "g"], ["hh", "j"]];
-  const START = { L: 0, x: 0, y: 14 };
+  // you begin high on a broken arch that reaches in from the mist and lands on the Landing plaza
+  const START_ARCH = { from: { x: -66, z: 58 }, u0: 0.4, minH: 20 };
 
   const POEMS = [
     "From up here the walls are only handwriting.",
@@ -394,17 +396,17 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const archPoint = (A, B, h, u) => ({ x: lerp(A.x, B.x, u), y: lerp(A.y, B.y, u) + h * Math.pow(Math.sin(Math.PI * u), 0.7), z: lerp(A.z, B.z, u) });
 
   // raise the arch until it clears every hedge, terrace and statue it does not belong to
-  function archClear(A, B, h) {
-    for (let u = 0.02; u < 0.985; u += 0.01) {
+  function archClear(A, B, h, u0 = 0) {
+    for (let u = Math.max(0.02, u0); u < 0.985; u += 0.01) {
       const p = archPoint(A, B, h, u);
       for (const L of LEVELS) {
         if (Math.abs(p.x - L.cx) > L.half + 1.5 || Math.abs(p.z - L.cz) > L.half + 1.5) continue;
-        const own = [A.plaza, B.plaza].find((q) => q.level === L && inRect(q, p.x, p.z, -0.8));
+        const own = [A.plaza, B.plaza].find((q) => q && q.level === L && inRect(q, p.x, p.z, -0.8));
         if (own && inRect(own, p.x, p.z, 0.9)) continue;
         if (p.y < L.y + WH + 0.9 && p.y > L.y - SLAB - 2.4) return false;
       }
       for (const q of PLAZAS) {
-        if (q === A.plaza || q === B.plaza) continue;
+        if (q === A.plaza || q === B.plaza || !q.animal) continue;
         if (Math.hypot(p.x - q.cx, p.z - q.cz) < 3 && p.y < q.y0 + 9 && p.y > q.y0 - SLAB) return false;
       }
       // arches may cross each other, but with room to walk underneath
@@ -418,18 +420,23 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   function makeArch(pa, pb) {
     const [A, B] = archFeet(pa, pb);
+    return buildArch(A, B, pa.color, pb.color, 0, 0);
+  }
+
+  // u0 > 0 makes a broken arch: only the part from u0 to B exists, and the broken end cannot be walked off
+  function buildArch(A, B, colA, colB, u0, minH) {
     const dist = Math.hypot(B.x - A.x, B.z - A.z);
-    let h = 0.18 * dist + 4;
-    while (!archClear(A, B, h) && h < 70) h += 1;
-    const M = Math.max(80, Math.ceil(dist * 5));
+    let h = Math.max(minH, 0.18 * dist + 4);
+    while (!archClear(A, B, h, u0) && h < 70) h += 1;
+    const M = Math.max(80, Math.ceil(dist * (1 - u0) * 5));
     const pts = [], cum = [0];
     for (let i = 0; i <= M; i++) {
-      const p = archPoint(A, B, h, i / M);
+      const p = archPoint(A, B, h, lerp(u0, 1, i / M));
       pts.push(new THREE.Vector3(p.x, p.y, p.z));
       if (i) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
     }
-    const arch = { feet: [A, B], h, pts, cum, len: cum[M], lowY: Math.min(A.y, B.y), ux: (B.x - A.x) / dist, uz: (B.z - A.z) / dist };
-    world.add(archMesh(arch, pa.color, pb.color));
+    const arch = { feet: [A, B], h, pts, cum, len: cum[M], u0, broken: u0 > 0, lowY: Math.min(A.y, B.y), ux: (B.x - A.x) / dist, uz: (B.z - A.z) / dist };
+    world.add(archMesh(arch, colA, colB));
     return arch;
   }
 
@@ -439,7 +446,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const sx = -arch.uz, sz = arch.ux;
     const stone = new THREE.Color(0xe8dfd4), ca = new THREE.Color(colA).lerp(stone, 0.25), cb = new THREE.Color(colB).lerp(stone, 0.25);
     const corners = pts.map((p, i) => {
-      const u = i / (M - 1), s = Math.pow(Math.sin(Math.PI * u), 0.55);
+      const u = lerp(arch.u0, 1, i / (M - 1)), s = Math.pow(Math.sin(Math.PI * u), 0.55);
       const w = lerp(2.8, 0.34, s) / 2, th = lerp(2.4, 0.3, s);
       return [
         [p.x + sx * w, p.y, p.z + sz * w], [p.x - sx * w, p.y, p.z - sz * w],
@@ -447,7 +454,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       ];
     });
     const colors = pts.map((p, i) => {
-      const u = i / (M - 1);
+      const u = lerp(arch.u0, 1, i / (M - 1));
       const c = stone.clone();
       if (u < 0.25) c.lerp(ca, 1 - u / 0.25);
       if (u > 0.75) c.lerp(cb, (u - 0.75) / 0.25);
@@ -486,7 +493,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const t = (s - arch.cum[lo]) / ((arch.cum[hi] - arch.cum[lo]) || 1);
     const p = arch.pts[lo].clone().lerp(arch.pts[hi], t);
     const tan = arch.pts[hi].clone().sub(arch.pts[lo]).normalize();
-    return { p, tan, u: s / arch.len };
+    return { p, tan, u: lerp(arch.u0, 1, s / arch.len) };
   }
 
   // ---- statues ------------------------------------------------------------
@@ -607,6 +614,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   function makeStatue(p) {
     const g = new THREE.Group();
+    if (!p.animal) return g;
     g.position.set(p.cx, p.y0, p.cz);
     const stone = new THREE.MeshLambertMaterial({ color: 0xe8dfd4 });
     const block = (w, h, y) => {
@@ -703,7 +711,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   // ---- game state -------------------------------------------------------
-  let world = null, arches = [], trail;
+  let world = null, arches = [], startArch = null, trail;
   const player = { L: LEVELS[0], x: 0, z: 0, yaw: 0, pitch: 0, bob: 0 };
   const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6, roll: 0 };
   let mode = "intro";      // intro | ground | arch | anim | won
@@ -712,7 +720,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   let nearFoot = null, blockedFoot = null, curPlaza = null;
   let orbit = 0.6;
   const stats = { time: 0, arches: 0, plazas: new Set() };
-  const updateFound = () => { $("#found").textContent = `${stats.plazas.size}/${PLAZAS.length} plazas`; };
+  const updateFound = () => { $("#found").textContent = `${stats.plazas.size}/${PLAZAS.filter((p) => !p.start).length} plazas`; };
   let lastTrail = null, running = false;
   let poemIdx = (Math.random() * POEMS.length) | 0;
   const archHintShown = { on: false };
@@ -739,7 +747,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const plazas = PLAZAS.filter((p) => p.L === L.i);
       L.maze = genMaze(L, plazas);
       L.boxes = [];
-      L.statues = plazas;
+      L.plazas = plazas;
+      L.statues = plazas.filter((p) => p.animal);
 
       // the terrace itself, floating
       const size = L.n * CS + 1.2;
@@ -826,6 +835,16 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     arches = [];
     ARCHES.forEach(([a, b]) => arches.push(makeArch(plazaById[a], plazaById[b])));
 
+    // the broken starting arch, built last so it keeps clear of the others
+    const sp = plazaById.s, sf = START_ARCH.from;
+    const sd = Math.hypot(sp.cx - sf.x, sp.cz - sf.z), sux = (sp.cx - sf.x) / sd, suz = (sp.cz - sf.z) / sd;
+    startArch = buildArch({ x: sf.x, y: sp.y0, z: sf.z, plaza: null }, { x: sp.cx - sux * FOOT, y: sp.y0, z: sp.cz - suz * FOOT, plaza: sp },
+      0xe8dfd4, sp.color, START_ARCH.u0, START_ARCH.minH);
+    let top = 0;
+    startArch.pts.forEach((q, i) => { if (q.y > startArch.pts[top].y) top = i; });
+    startArch.crownS = startArch.cum[top];
+    arches.push(startArch);
+
     // footsteps, glowing faintly so they read from above
     const tp = new Float32Array(4000 * 3);
     const tg = new THREE.BufferGeometry();
@@ -836,9 +855,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     trail.count = 0;
     world.add(trail);
 
-    const L0 = LEVELS[START.L], s = cellCenter(L0, START.x, START.y);
-    const side = openSides(L0.maze, START.x, START.y)[0] || { dx: 1, dz: 0 };
-    Object.assign(player, { L: L0, x: s.x, z: s.z, yaw: yawOf(side.dx, side.dz), pitch: 0, bob: 0 });
+    Object.assign(player, { L: sp.level, x: sp.cx, z: sp.cz, yaw: 0, pitch: 0, bob: 0 });
     stats.time = 0; stats.arches = 0; stats.plazas = new Set();
     updateFound();
     lastTrail = null;
@@ -887,7 +904,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   // all arch feet standing on the given terrace
   function feetOn(L) {
     const out = [];
-    arches.forEach((a) => a.feet.forEach((ft, end) => { if (ft.plaza.level === L) out.push({ arch: a, end, ft }); }));
+    arches.forEach((a) => a.feet.forEach((ft, end) => { if (ft.plaza && ft.plaza.level === L) out.push({ arch: a, end, ft }); }));
     return out;
   }
 
@@ -947,11 +964,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     if ((near && near.ft) !== (nearFoot && nearFoot.ft)) { nearFoot = near; refreshActions(); }
 
     // plazas
-    const pl = L.statues.find((p) => inRect(p, player.x, player.z, 0.3)) || null;
+    const pl = L.plazas.find((p) => inRect(p, player.x, player.z, 0.3)) || null;
     if (pl !== curPlaza) {
       curPlaza = pl;
       if (pl) {
-        stats.plazas.add(pl.id);
+        if (!pl.start) stats.plazas.add(pl.id);
         updateFound();
         showPlace(pl);
         if (pl.goal) win();
@@ -1008,6 +1025,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     showSpeed(v);
     const move = sign * v * dt;
     onArch.s += move;
+    if (a.broken && onArch.s < 1) onArch.s = 1;
     if (move) { player.bob += Math.abs(move) * 2.6; hideHint(); }
 
     if (onArch.s <= 0 || onArch.s >= a.len) { leaveArch(onArch.s <= 0 ? 0 : 1); return; }
@@ -1137,12 +1155,17 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const intro = $("#intro");
     intro.classList.add("fade");
     setTimeout(() => { intro.hidden = true; }, 1200);
-    const target = { x: player.x, y: player.L.y + EYE, z: player.z, yaw: player.yaw, pitch: 0 };
-    tweenTo(target, 4.6, () => {
-      mode = "ground";
+    // land on the crown of the broken arch, facing down towards the maze
+    const at = archAt(startArch, startArch.crownS);
+    const yaw = yawOf(at.tan.x, at.tan.z), pitch = -0.3;
+    tweenTo({ x: at.p.x, y: at.p.y + EYE, z: at.p.z, yaw, pitch }, 4.6, () => {
+      Object.assign(player, { L: startArch.feet[1].plaza.level, yaw, pitch });
+      onArch = { arch: startArch, s: startArch.crownS, from: 1, poemShown: true, dir: 1 };
+      mode = "arch";
       running = true;
+      archHintShown.on = true;
       refreshActions();
-      showHint("Left side: drag to walk and turn. Right side: drag to look around.", 8000);
+      showHint("You stand high above the maze. Drag the right side to look around, the left side to walk down.", 9000);
     });
   }
 
