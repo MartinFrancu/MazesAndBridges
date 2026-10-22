@@ -700,9 +700,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const wall = new THREE.Shape([V2(-LW / 2, 0), V2(LW / 2, 0), V2(LW / 2, WIN_H), V2(-LW / 2, WIN_H)]);
     const inner = windowHoles(type, 0);
     wall.holes = inner.map((p) => new THREE.Path(p));
+    // the frame's opening is a little smaller than the hole, so it fully lines the hole instead of sharing its surface
+    const lining = windowHoles(type, -0.03);
     const frames = windowHoles(type, 0.12).map((outer, k) => {
       const f = new THREE.Shape(outer);
-      f.holes = [new THREE.Path(inner[k])];
+      f.holes = [new THREE.Path(lining[k])];
       return f;
     });
     return { wall: ext(wall, WT), frame: ext(frames, WT + 0.1) };
