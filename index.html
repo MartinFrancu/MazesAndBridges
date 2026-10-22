@@ -165,7 +165,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const PLAYER_R = 0.3;
   const STATUE_R = 1.6;
   const FOOT = 2.8;        // arch foot distance from the plaza centre
-  const RAIL = 1.1;        // height of the stone parapet around a plaza
+  const PLAZA_WINDOWS = 0.25; // share of a plaza's edge hedges that get a window
   const WIN_H = WH + 0.25; // height of a hedge with a window cut through it
   const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
   const motion = { v: 0, dir: 0 };
@@ -400,7 +400,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       for (const L of LEVELS) {
         if (Math.abs(p.x - L.cx) > L.half + 1.5 || Math.abs(p.z - L.cz) > L.half + 1.5) continue;
         const own = [A.plaza, B.plaza].find((q) => q.level === L && inRect(q, p.x, p.z, -0.8));
-        if (own && (inRect(own, p.x, p.z, 0.9) || p.y > L.y + RAIL + 0.9)) continue;
+        if (own && inRect(own, p.x, p.z, 0.9)) continue;
         if (p.y < L.y + WH + 0.9 && p.y > L.y - SLAB - 2.4) return false;
       }
       for (const q of PLAZAS) {
@@ -766,14 +766,14 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const edgeV = (i, j) => plazas.some((p) => j >= p.y && j < p.y + 3 && (i === p.x || i === p.x + 3));
       const area = (i, j) => `${L.i}-${L.region(Math.min(i, L.n - 1), Math.min(j, L.n - 1))}`;
       const seg = (val, edge, i, j, props) => {
-        const win = val === 2 && !edge ? AREA_WINDOWS[area(i, j)] : null;
-        segs.push({ ...props, rail: edge, win });
+        const win = (edge ? Math.random() < PLAZA_WINDOWS : val === 2) ? AREA_WINDOWS[area(i, j)] : null;
+        segs.push({ ...props, win });
       };
       for (let j = 0; j <= L.n; j++) for (let i = 0; i < L.n; i++)
         if (L.maze.h[j][i]) seg(L.maze.h[j][i], edgeH(i, j), i, j, { x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, vert: false });
       for (let j = 0; j < L.n; j++) for (let i = 0; i <= L.n; i++)
         if (L.maze.v[j][i]) seg(L.maze.v[j][i], edgeV(i, j), i, j, { x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, vert: true });
-      const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color(), railCol = new THREE.Color(0xd9cdc6);
+      const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color();
       const hedgeColor = () => col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
       segs.forEach((s) => L.boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 }));
 
@@ -801,12 +801,12 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const solid = segs.filter((s) => !s.win);
       const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), solid.length);
       solid.forEach((s, i) => {
-        const hgt = s.rail ? RAIL : WH + Math.random() * 0.45;
+        const hgt = WH + Math.random() * 0.45;
         d.position.set(s.x, L.y + hgt / 2, s.z);
         d.scale.set(s.sx, hgt, s.sz);
         d.updateMatrix();
         hedges.setMatrixAt(i, d.matrix);
-        hedges.setColorAt(i, s.rail ? col.copy(railCol) : hedgeColor());
+        hedges.setColorAt(i, hedgeColor());
       });
       hedges.castShadow = hedges.receiveShadow = true;
       world.add(hedges);
