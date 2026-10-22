@@ -172,7 +172,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
 
   // three terraces, each higher and smaller, overlapping at the corners.
-  // region() splits a terrace into parts the hedges never connect; only arches do.
+  // region() splits a terrace into areas, each with its own window style. Every terrace is one connected maze.
   const LEVELS = [
     { n: 15, y: 0, cx: 0, cz: 0, region: (i, j) => (i < 7 ? 0 : 1) },
     { n: 11, y: 15, cx: 42, cz: -40, region: (i, j) => (j < 5 ? 0 : 1) },
@@ -194,7 +194,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     { id: "j", L: 2, x: 5, y: 5, name: "Ivory Bear", color: 0xf0e6da, animal: "bear" },
     { id: "z", L: 2, x: 0, y: 0, name: "Lantern of the Way Out", color: 0xffe2a0, animal: "lantern", goal: true },
   ];
-  // the way up: a-b, c-e, hh-j. The others are detours.
+  // the way up: c-e or d-g to the middle terrace, then hh-j to the top. Arches within a terrace are shortcuts.
   const ARCHES = [["a", "b"], ["c", "e"], ["f", "l"], ["d", "g"], ["hh", "j"]];
   // you begin on the crown of this arch, facing the first plaza
   const START_ON = ["d", "g"];
@@ -331,29 +331,25 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const v = Array.from({ length: n }, () => Array(n + 1).fill(1));
     const open = (x, y, nx, ny) => { if (nx === x) h[Math.max(y, ny)][x] = 0; else v[y][Math.max(x, nx)] = 0; };
     const seen = Array.from({ length: n }, () => Array(n).fill(false));
-    for (let sy = 0; sy < n; sy++) for (let sx = 0; sx < n; sx++) {
-      if (seen[sy][sx]) continue;
-      const r = reg(sx, sy);
-      seen[sy][sx] = true;
-      const stack = [[sx, sy]];
-      while (stack.length) {
-        const [x, y] = stack[stack.length - 1];
-        const nb = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]
-          .filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n && !seen[b][a] && reg(a, b) === r);
-        if (!nb.length) { stack.pop(); continue; }
-        const [nx, ny] = nb[(Math.random() * nb.length) | 0];
-        open(x, y, nx, ny);
-        seen[ny][nx] = true;
-        stack.push([nx, ny]);
-      }
+    // one maze over the whole terrace, so any two plazas on it are joined on foot
+    seen[0][0] = true;
+    const stack = [[0, 0]];
+    while (stack.length) {
+      const [x, y] = stack[stack.length - 1];
+      const nb = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]
+        .filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n && !seen[b][a]);
+      if (!nb.length) { stack.pop(); continue; }
+      const [nx, ny] = nb[(Math.random() * nb.length) | 0];
+      open(x, y, nx, ny);
+      seen[ny][nx] = true;
+      stack.push([nx, ny]);
     }
-    // a few loops, never across a region border
+    // a few loops
     for (let k = 0; k < n / 2; k++) {
       const x = 1 + ((Math.random() * (n - 2)) | 0), y = 1 + ((Math.random() * (n - 2)) | 0);
-      if (Math.random() < 0.5) { if (reg(x, y - 1) === reg(x, y)) h[y][x] = 0; }
-      else if (reg(x - 1, y) === reg(x, y)) v[y][x] = 0;
+      if (Math.random() < 0.5) h[y][x] = 0; else v[y][x] = 0;
     }
-    // windows: some hedges become low walls, most often along region borders and terrace edges
+    // windows: some hedges get one, most often where two areas meet and along terrace edges
     const chance = (border, edge) => (border ? 0.3 : edge ? 0.12 : 0.07);
     for (let j = 0; j <= n; j++) for (let i = 0; i < n; i++) {
       if (h[j][i] !== 1) continue;
