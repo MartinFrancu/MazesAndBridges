@@ -169,8 +169,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const PLAZA_WINDOWS = 0.25; // share of a plaza's edge hedges that get a window
   const WIN_H = WH;        // a hedge with a window cut through it is as tall as the rest
   const SINK = 0.4;        // hedges reach this far below the floor, so their shadows meet the ground with no gap
-  // off: one shadow map over the whole scene is too coarse and left lit strips along hedge bases on phones
-  const SHADOWS = false;
+  // one shadow map covers the whole scene, so it is coarse and leaves thin lit strips along hedge bases on phones
+  const SHADOWS = true;
   const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
   const motion = { v: 0, dir: 0 };
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
