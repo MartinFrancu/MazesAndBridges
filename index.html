@@ -136,6 +136,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <section class="overlay" id="intro">
   <h1>Mazes <span>&amp;</span><br>Bridges</h1>
   <p>Three hedge mazes float in the evening mist, one above another. Each plaza keeps a stone animal and a single arch. Some arches climb to the next terrace, some only cross the one you are on. The way out is on the highest terrace, beside a golden lantern.</p>
+  <span class="meta" id="seed-label"></span>
   <span class="meta">Left side of the screen: walk and turn &middot; right side: look around &middot; WASD and R/F on a keyboard</span>
   <button class="btn primary" id="enter" type="button">Enter the maze</button>
 </section>
@@ -146,12 +147,14 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     <dt>Time in the maze</dt><dd id="w-time">0:00</dd>
     <dt>Arches walked</dt><dd id="w-arches">0</dd>
     <dt>Plazas found</dt><dd id="w-plazas">0</dd>
+    <dt>Maze number</dt><dd id="w-seed">0</dd>
   </dl>
   <button class="btn primary" id="again" type="button">Walk a new maze</button>
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="movement.js"></script>
+<script src="levels.js"></script>
 <script>
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -175,33 +178,12 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const motion = { v: 0, dir: 0 };
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
 
-  // three terraces, each higher and smaller, overlapping at the corners.
-  // region() splits a terrace into areas, each with its own window style. Every terrace is one connected maze.
-  const LEVELS = [
-    { n: 23, y: 0, cx: 0, cz: 0, region: (i, j) => (i < 11 ? 0 : 1) },
-    { n: 17, y: 15, cx: 70, cz: -66, region: (i, j) => (j < 8 ? 0 : 1) },
-    { n: 13, y: 30, cx: 16, cz: -118, region: () => 0 },
-  ];
-  LEVELS.forEach((L, i) => { L.i = i; L.half = (L.n * CS) / 2; });
-
-  // plazas are 3x3 cells; x/y are the top-left cell. One arch per plaza.
-  const PLAZAS = [
-    { id: "a", L: 0, x: 2, y: 11, name: "Crimson Stag", color: 0xd2434f, animal: "stag" },
-    { id: "d", L: 0, x: 6, y: 2, name: "Saffron Hare", color: 0xf2b630, animal: "hare" },
-    { id: "b", L: 0, x: 15, y: 15, name: "Jade Turtle", color: 0x3cc492, animal: "turtle" },
-    { id: "c", L: 0, x: 12, y: 10, name: "Ember Fox", color: 0xf07a32, animal: "fox" },
-    { id: "l", L: 0, x: 18, y: 9, name: "Lime Snail", color: 0xa6d63a, animal: "snail" },
-    { id: "e", L: 1, x: 2, y: 9, name: "Violet Owl", color: 0xa363f5, animal: "owl" },
-    { id: "hh", L: 1, x: 11, y: 11, name: "Cobalt Heron", color: 0x4a7ff2, animal: "heron" },
-    { id: "f", L: 1, x: 9, y: 2, name: "Magenta Cat", color: 0xe0559f, animal: "cat" },
-    { id: "g", L: 1, x: 3, y: 2, name: "Teal Carp", color: 0x2ec9c9, animal: "carp" },
-    { id: "j", L: 2, x: 7, y: 7, name: "Ivory Bear", color: 0xf0e6da, animal: "bear" },
-    { id: "z", L: 2, x: 0, y: 0, name: "Lantern of the Way Out", color: 0xffe2a0, animal: "lantern", goal: true },
-  ];
-  // the way up: c-e or d-g to the middle terrace, then hh-j to the top. Arches within a terrace are shortcuts.
-  const ARCHES = [["a", "b"], ["c", "e"], ["f", "l"], ["d", "g"], ["hh", "j"]];
-  // you begin on the crown of this arch, facing the first plaza
-  const START_ON = ["a", "b"];
+  // the layout (terraces, plazas, arches, where you start) comes from levels.js and a seed;
+  // region() splits a terrace into areas with their own window style. Every terrace is one connected maze.
+  let LEVELS = [], PLAZAS = [], ARCHES = [], START_ON = [], plazaById = {};
+  let seed = 0, rand = Math.random;
+  const worldC = { x: 0, y: 0, z: 0 };
+  let worldR = 100;
 
   const POEMS = [
     "From up here the walls are only handwriting.",
@@ -227,25 +209,53 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const hex = (c) => "#" + c.toString(16).padStart(6, "0");
 
-  PLAZAS.forEach((p) => {
-    const L = LEVELS[p.L];
-    p.level = L;
-    p.y0 = L.y;
-    p.x0 = L.cx - L.half + p.x * CS; p.x1 = p.x0 + 3 * CS;
-    p.z0 = L.cz - L.half + p.y * CS; p.z1 = p.z0 + 3 * CS;
-    p.cx = (p.x0 + p.x1) / 2; p.cz = (p.z0 + p.z1) / 2;
-  });
-  const plazaById = Object.fromEntries(PLAZAS.map((p) => [p.id, p]));
-  // the arch rises near the middle, leaning towards its other plaza; the statue stands in the opposite corner
-  PLAZAS.forEach((p) => {
-    p.sx = p.footX = p.cx; p.sz = p.footZ = p.cz;
-    const pair = ARCHES.find((x) => x.includes(p.id));
-    if (!pair) return;
-    const o = plazaById[pair[0] === p.id ? pair[1] : pair[0]];
-    const kx = Math.sign(o.cx - p.cx) || 1, kz = Math.sign(o.cz - p.cz) || 1;
-    p.footX = p.cx + kx * ARCH_OFFSET; p.footZ = p.cz + kz * ARCH_OFFSET;
-    p.sx = p.cx - kx * CORNER; p.sz = p.cz - kz * CORNER;
-  });
+  function applyLayout(newSeed) {
+    const gen = LEVELGEN.generate(newSeed);
+    seed = gen.seed;
+    rand = gen.random;
+    LEVELS = gen.levels;
+    LEVELS.forEach((L, i) => { L.i = i; });
+    PLAZAS = gen.plazas;
+    ARCHES = gen.arches;
+    START_ON = gen.start;
+    PLAZAS.forEach((p) => {
+      const L = LEVELS[p.L];
+      p.level = L;
+      p.y0 = L.y;
+      p.x0 = L.cx - L.half + p.x * CS; p.x1 = p.x0 + 3 * CS;
+      p.z0 = L.cz - L.half + p.y * CS; p.z1 = p.z0 + 3 * CS;
+      p.cx = (p.x0 + p.x1) / 2; p.cz = (p.z0 + p.z1) / 2;
+    });
+    plazaById = Object.fromEntries(PLAZAS.map((p) => [p.id, p]));
+    // the arch rises near the middle, leaning towards its other plaza; the statue stands in the opposite corner
+    PLAZAS.forEach((p) => {
+      p.sx = p.footX = p.cx; p.sz = p.footZ = p.cz;
+      const pair = ARCHES.find((x) => x.includes(p.id));
+      if (!pair) return;
+      const o = plazaById[pair[0] === p.id ? pair[1] : pair[0]];
+      const kx = Math.sign(o.cx - p.cx) || 1, kz = Math.sign(o.cz - p.cz) || 1;
+      p.footX = p.cx + kx * ARCH_OFFSET; p.footZ = p.cz + kz * ARCH_OFFSET;
+      p.sx = p.cx - kx * CORNER; p.sz = p.cz - kz * CORNER;
+    });
+
+    // frame the whole layout: sun, shadows, drifting motes and the overview orbit
+    const x0 = Math.min(...LEVELS.map((L) => L.cx - L.half)), x1 = Math.max(...LEVELS.map((L) => L.cx + L.half));
+    const z0 = Math.min(...LEVELS.map((L) => L.cz - L.half)), z1 = Math.max(...LEVELS.map((L) => L.cz + L.half));
+    const yTop = Math.max(...LEVELS.map((L) => L.y));
+    Object.assign(worldC, { x: (x0 + x1) / 2, y: yTop / 2, z: (z0 + z1) / 2 });
+    worldR = Math.hypot(x1 - x0, z1 - z0) / 2;
+    sunLight.target.position.set(worldC.x, worldC.y, worldC.z);
+    sunLight.position.set(-0.55, 0.62, -0.56).normalize().multiplyScalar(160).add(sunLight.target.position);
+    const ext = worldR + 10;
+    Object.assign(sunLight.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext });
+    sunLight.shadow.camera.updateProjectionMatrix();
+    moteBase.forEach((m) => {
+      m.x = x0 - 15 + Math.random() * (x1 - x0 + 30);
+      m.z = z0 - 15 + Math.random() * (z1 - z0 + 30);
+      m.y = -6 + Math.random() * (yTop + 20);
+    });
+    $("#seed-label").textContent = `Maze number ${seed}`;
+  }
   const inRect = (p, x, z, m) => x > p.x0 + m && x < p.x1 - m && z > p.z0 + m && z < p.z1 - m;
 
   // ---- renderer / scene -------------------------------------------------
@@ -353,27 +363,27 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const nb = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]
         .filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n && !seen[b][a]);
       if (!nb.length) { stack.pop(); continue; }
-      const [nx, ny] = nb[(Math.random() * nb.length) | 0];
+      const [nx, ny] = nb[(rand() * nb.length) | 0];
       open(x, y, nx, ny);
       seen[ny][nx] = true;
       stack.push([nx, ny]);
     }
     // a few loops
     for (let k = 0; k < n / 2; k++) {
-      const x = 1 + ((Math.random() * (n - 2)) | 0), y = 1 + ((Math.random() * (n - 2)) | 0);
-      if (Math.random() < 0.5) h[y][x] = 0; else v[y][x] = 0;
+      const x = 1 + ((rand() * (n - 2)) | 0), y = 1 + ((rand() * (n - 2)) | 0);
+      if (rand() < 0.5) h[y][x] = 0; else v[y][x] = 0;
     }
     // windows: some hedges get one, most often where two areas meet and along terrace edges
     const chance = (border, edge) => (border ? 0.3 : edge ? 0.12 : 0.07);
     for (let j = 0; j <= n; j++) for (let i = 0; i < n; i++) {
       if (h[j][i] !== 1) continue;
       const edge = j === 0 || j === n, border = !edge && reg(i, j - 1) !== reg(i, j);
-      if (Math.random() < chance(border, edge)) h[j][i] = 2;
+      if (rand() < chance(border, edge)) h[j][i] = 2;
     }
     for (let j = 0; j < n; j++) for (let i = 0; i <= n; i++) {
       if (v[j][i] !== 1) continue;
       const edge = i === 0 || i === n, border = !edge && reg(i - 1, j) !== reg(i, j);
-      if (Math.random() < chance(border, edge)) v[j][i] = 2;
+      if (rand() < chance(border, edge)) v[j][i] = 2;
     }
     // plazas: clear everything inside the 3x3 block
     plazas.forEach((p) => {
@@ -668,7 +678,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   // ---- windows ------------------------------------------------------------
   // a window is a full hedge with an opening cut through it and a stone frame; each area has its own style
-  const AREA_WINDOWS = { "0-0": "gothic", "0-1": "roman", "1-0": "wide", "1-1": "oculus", "2-0": "lancets" };
   const V2 = (x, y) => new THREE.Vector2(x, y);
   const arc = (cx, cy, r, a0, a1, n) => Array.from({ length: n + 1 }, (_, k) => {
     const a = a0 + ((a1 - a0) * k) / n;
@@ -716,7 +725,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   // ---- game state -------------------------------------------------------
   let world = null, arches = [], trail;
-  const player = { L: LEVELS[0], x: 0, z: 0, yaw: 0, pitch: 0, bob: 0 };
+  const player = { L: null, x: 0, z: 0, yaw: 0, pitch: 0, bob: 0 };
   const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6, roll: 0 };
   let mode = "intro";      // intro | ground | arch | anim | won
   let anim = null;
@@ -738,7 +747,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     });
   }
 
-  function buildWorld() {
+  function buildWorld(newSeed) {
+    applyLayout(newSeed);
     disposeWorld();
     world = new THREE.Group();
     scene.add(world);
@@ -762,9 +772,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
       // columns hanging down into the mist, kept clear of the terraces below
       for (let k = 0, tries = 0; k < 6 && tries < 60; tries++) {
-        const x = L.cx + (Math.random() - 0.5) * (size - 4), z = L.cz + (Math.random() - 0.5) * (size - 4);
+        const x = L.cx + (rand() - 0.5) * (size - 4), z = L.cz + (rand() - 0.5) * (size - 4);
         if (LEVELS.some((o) => o.y < L.y && Math.abs(x - o.cx) < o.half + 4 && Math.abs(z - o.cz) < o.half + 4)) continue;
-        const len = 18 + Math.random() * 26;
+        const len = 18 + rand() * 26;
         const col = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.15, len, 10), hangMat);
         col.position.set(x, L.y - SLAB - len / 2, z);
         world.add(col);
@@ -776,9 +786,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const ox = L.cx - L.half, oz = L.cz - L.half;
       const edgeH = (i, j) => plazas.some((p) => i >= p.x && i < p.x + 3 && (j === p.y || j === p.y + 3));
       const edgeV = (i, j) => plazas.some((p) => j >= p.y && j < p.y + 3 && (i === p.x || i === p.x + 3));
-      const area = (i, j) => `${L.i}-${L.region(Math.min(i, L.n - 1), Math.min(j, L.n - 1))}`;
+      const style = (i, j) => L.windows[L.region(Math.min(i, L.n - 1), Math.min(j, L.n - 1))];
       const seg = (val, edge, i, j, props) => {
-        const win = (edge ? Math.random() < PLAZA_WINDOWS : val === 2) ? AREA_WINDOWS[area(i, j)] : null;
+        const win = (edge ? rand() < PLAZA_WINDOWS : val === 2) ? style(i, j) : null;
         segs.push({ ...props, win });
       };
       for (let j = 0; j <= L.n; j++) for (let i = 0; i < L.n; i++)
@@ -1061,8 +1071,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   function orbitPose(a) {
-    const c = { x: 30, y: 14, z: -60 }, r = 165;
-    const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r, y = 100;
+    const c = worldC, r = Math.max(140, worldR * 1.35);
+    const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r, y = c.y + r * 0.55;
     return { x, y, z, yaw: yawOf(c.x - x, c.z - z), pitch: Math.atan2(c.y - y, r), roll: 0 };
   }
 
@@ -1109,7 +1119,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     $("#w-time").textContent = fmtTime(stats.time);
     $("#w-arches").textContent = stats.arches;
     $("#w-plazas").textContent = stats.plazas.size;
-    orbit = Math.atan2(player.z + 60, player.x - 30);
+    $("#w-seed").textContent = seed;
+    orbit = Math.atan2(player.z - worldC.z, player.x - worldC.x);
     tweenTo(orbitPose(orbit), 6, () => {
       mode = "won";
       const w = $("#won");
@@ -1170,7 +1181,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const w = $("#won");
     w.classList.add("fade");
     setTimeout(() => { w.hidden = true; }, 1200);
-    buildWorld();
+    buildWorld(LEVELGEN.randomSeed());
     start();
   }
 
@@ -1278,7 +1289,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   resize();
 
   // ---- loop -----------------------------------------------------------------
-  buildWorld();
+  // a number after # in the link replays that maze
+  const linked = parseInt(location.hash.slice(1), 10);
+  buildWorld(linked > 0 ? linked : LEVELGEN.randomSeed());
   Object.assign(cam, orbitPose(orbit));
   let last = performance.now();
 
