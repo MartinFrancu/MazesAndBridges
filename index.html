@@ -168,6 +168,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const ARCH_OFFSET = 1.2; // arch foot offset from the centre, towards the other corner
   const PLAZA_WINDOWS = 0.25; // share of a plaza's edge hedges that get a window
   const WIN_H = WH;        // a hedge with a window cut through it is as tall as the rest
+  const SINK = 0.4;        // hedges reach this far below the floor, so their shadows meet the ground with no gap
   const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
   const motion = { v: 0, dir: 0 };
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
@@ -315,7 +316,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   sunLight.shadow.mapSize.set(2048, 2048);
   Object.assign(sunLight.shadow.camera, { left: -125, right: 125, top: 125, bottom: -125, near: 1, far: 380 });
   sunLight.shadow.bias = -0.0006;
-  sunLight.shadow.normalBias = 0.04;
+  sunLight.shadow.normalBias = 0.02;
   scene.add(sunLight, sunLight.target);
 
   // drifting motes, the same in every maze
@@ -698,7 +699,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   function windowGeometries(type) {
     const LW = CS + WT;
     const ext = (shapes, depth) => new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false }).translate(0, 0, -depth / 2);
-    const wall = new THREE.Shape([V2(-LW / 2, 0), V2(LW / 2, 0), V2(LW / 2, WIN_H), V2(-LW / 2, WIN_H)]);
+    const wall = new THREE.Shape([V2(-LW / 2, -SINK), V2(LW / 2, -SINK), V2(LW / 2, WIN_H), V2(-LW / 2, WIN_H)]);
     const inner = windowHoles(type, 0);
     wall.holes = inner.map((p) => new THREE.Path(p));
     // the frame's opening is a little smaller than the hole, so it fully lines the hole instead of sharing its surface
@@ -811,8 +812,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), solid.length);
       solid.forEach((s, i) => {
         const hgt = WH;
-        d.position.set(s.x, L.y + hgt / 2, s.z);
-        d.scale.set(s.sx, hgt, s.sz);
+        d.position.set(s.x, L.y + (hgt - SINK) / 2, s.z);
+        d.scale.set(s.sx, hgt + SINK, s.sz);
         d.updateMatrix();
         hedges.setMatrixAt(i, d.matrix);
         hedges.setColorAt(i, hedgeColor());
