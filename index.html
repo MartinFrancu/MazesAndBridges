@@ -164,7 +164,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const EYE = 1.6;
   const PLAYER_R = 0.3;
   const STATUE_R = 1.6;
-  const CORNER = 3.4;      // arch foot and statue sit this far (in x and z) from the plaza centre, in opposite corners
+  const CORNER = 3.4;      // statue offset (in x and z) from the plaza centre, in the corner away from its arch
+  const ARCH_OFFSET = 1.2; // arch foot offset from the centre, towards the other corner
   const PLAZA_WINDOWS = 0.25; // share of a plaza's edge hedges that get a window
   const WIN_H = WH + 0.25; // height of a hedge with a window cut through it
   const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
@@ -232,14 +233,14 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     p.cx = (p.x0 + p.x1) / 2; p.cz = (p.z0 + p.z1) / 2;
   });
   const plazaById = Object.fromEntries(PLAZAS.map((p) => [p.id, p]));
-  // the arch rises from the corner facing its other plaza; the statue stands in the opposite corner
+  // the arch rises near the middle, leaning towards its other plaza; the statue stands in the opposite corner
   PLAZAS.forEach((p) => {
     p.sx = p.footX = p.cx; p.sz = p.footZ = p.cz;
     const pair = ARCHES.find((x) => x.includes(p.id));
     if (!pair) return;
     const o = plazaById[pair[0] === p.id ? pair[1] : pair[0]];
     const kx = Math.sign(o.cx - p.cx) || 1, kz = Math.sign(o.cz - p.cz) || 1;
-    p.footX = p.cx + kx * CORNER; p.footZ = p.cz + kz * CORNER;
+    p.footX = p.cx + kx * ARCH_OFFSET; p.footZ = p.cz + kz * ARCH_OFFSET;
     p.sx = p.cx - kx * CORNER; p.sz = p.cz - kz * CORNER;
   });
   const inRect = (p, x, z, m) => x > p.x0 + m && x < p.x1 - m && z > p.z0 + m && z < p.z1 - m;
