@@ -159,7 +159,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   // ---- world constants -------------------------------------------------
   const CS = 4;            // cell size (world units ~ metres)
   const WT = 0.5;          // hedge thickness
-  const WH = 3.2;          // hedge height
+  const WH = 3.45;         // hedge height, the same everywhere so the tops read as one surface
   const SLAB = 2.6;        // terrace thickness
   const EYE = 1.6;
   const PLAYER_R = 0.3;
@@ -167,7 +167,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const CORNER = 3.4;      // statue offset (in x and z) from the plaza centre, in the corner away from its arch
   const ARCH_OFFSET = 1.2; // arch foot offset from the centre, towards the other corner
   const PLAZA_WINDOWS = 0.25; // share of a plaza's edge hedges that get a window
-  const WIN_H = WH + 0.25; // height of a hedge with a window cut through it
+  const WIN_H = WH;        // a hedge with a window cut through it is as tall as the rest
   const TURN = 2.2, LOOK = 0.005;   // walking speeds live in movement.js
   const motion = { v: 0, dir: 0 };
   const FOG_LOW = 0.05, FOG_HIGH = 0.006;
@@ -783,7 +783,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       for (let j = 0; j < L.n; j++) for (let i = 0; i <= L.n; i++)
         if (L.maze.v[j][i]) seg(L.maze.v[j][i], edgeV(i, j), i, j, { x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, vert: true });
       const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color();
-      const hedgeColor = () => col.copy(base).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.07);
+      const hedgeColor = () => col.copy(base);
       segs.forEach((s) => L.boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 }));
 
       // windowed hedges, one instanced mesh per style
@@ -810,7 +810,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const solid = segs.filter((s) => !s.win);
       const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), solid.length);
       solid.forEach((s, i) => {
-        const hgt = WH + Math.random() * 0.45;
+        const hgt = WH;
         d.position.set(s.x, L.y + hgt / 2, s.z);
         d.scale.set(s.sx, hgt, s.sz);
         d.updateMatrix();
