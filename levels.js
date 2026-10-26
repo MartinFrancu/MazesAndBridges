@@ -1,15 +1,17 @@
 // Level generator for Mazes & Bridges.
-// A template says how many terraces there are and how many arches join them;
+// A template lists the platforms (terraces) from the bottom up and the bridges (arches) on each;
 // a seed fills in everything else, so the same seed always rebuilds the same maze.
 window.LEVELGEN = (() => {
+  const SIZES = { small: 13, medium: 17, large: 23 }; // cells per side
   const TEMPLATE = {
-    terraces: [23, 17, 13], // cells per side, bottom to top; the way out is on the top one
-    rise: 15,               // metres between terraces
-    overlap: 10,            // metres each terrace reaches over the corner of the one below
-    between: [2, 1],        // arches joining terrace i and i+1 (the only ways up)
-    across: [1, 1, 0],      // shortcut arches between two plazas on the same terrace; you start on one on terrace 0
-    minGap: 3,              // cells of maze between two plazas on a terrace, at least
+    platforms: [
+      { size: "large", inner: 1, up: 2 }, // inner: bridges between two of its own plazas; up: bridges to the next platform
+      { size: "medium", inner: 1 },       // the top platform holds the way out, so it has no "up"
+    ],
+    rise: 15,    // metres between platforms
+    overlap: 10, // metres each platform reaches over the corner of the one below
   };
+  const LIMITS = { platforms: [2, 4], inner: [0, 3], up: [1, 3] };
 
   // one plaza per arch end, plus the goal; animals are dealt out in a shuffled order
   const ANIMALS = [
@@ -45,7 +47,8 @@ window.LEVELGEN = (() => {
     const styles = shuffle(WINDOW_STYLES.slice());
     let styleIdx = 0, prevDir = null;
     const levels = [];
-    template.terraces.forEach((n, i) => {
+    template.platforms.forEach((pf, i) => {
+      const n = SIZES[pf.size] || SIZES.medium;
       const half = (n * CS) / 2;
       const L = { n, half, y: i * template.rise, cx: 0, cz: 0 };
       if (i > 0) {
@@ -66,9 +69,12 @@ window.LEVELGEN = (() => {
 
     // how many plazas each terrace needs: one per arch end, plus the goal on top
     const top = levels.length - 1;
-    const need = levels.map((_, i) => 2 * (template.across[i] || 0) + (template.between[i] || 0) + (template.between[i - 1] || 0) + (i === top ? 1 : 0));
+    const pf = template.platforms;
+    const up = (i) => (i < top ? pf[i].up || 0 : 0);
+    const need = levels.map((_, i) => 2 * (pf[i].inner || 0) + up(i) + (i > 0 ? up(i - 1) : 0) + (i === top ? 1 : 0));
 
-    // place plazas at random, apart from each other and never under a higher terrace
+    // place plazas spread out: for each one, try 40 random spots and keep the one furthest from the
+    // plazas already placed (never overlapping, never under a higher terrace)
     const plazas = [];
     levels.forEach((L, li) => {
       const mine = [];
@@ -77,13 +83,17 @@ window.LEVELGEN = (() => {
         const x0 = L.cx - L.half + x * CS, z0 = L.cz - L.half + y * CS, s = PLAZA * CS;
         return x0 + s > o.cx - o.half - CS && x0 < o.cx + o.half + CS && z0 + s > o.cz - o.half - CS && z0 < o.cz + o.half + CS;
       });
-      for (let gap = template.minGap; mine.length < need[li] && gap >= 0; gap--) {
-        for (let tries = 0; tries < 400 && mine.length < need[li]; tries++) {
+      for (let k = 0; k < need[li]; k++) {
+        let best = null;
+        for (let tries = 0; tries < 40; tries++) {
           const x = (rand() * (L.n - PLAZA + 1)) | 0, y = (rand() * (L.n - PLAZA + 1)) | 0;
           if (covered(x, y)) continue;
-          if (mine.some((p) => Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) < PLAZA + gap)) continue;
-          mine.push({ L: li, x, y });
+          const d = mine.length ? Math.min(...mine.map((p) => Math.max(Math.abs(p.x - x), Math.abs(p.y - y)))) : L.n;
+          if (d < PLAZA) continue;
+          if (!best || d > best.d) best = { x, y, d };
         }
+        if (!best) break; // no room left on this platform
+        mine.push({ L: li, x: best.x, y: best.y });
       }
       plazas.push(...mine);
     });
@@ -106,8 +116,8 @@ window.LEVELGEN = (() => {
     const free = (li) => plazas.filter((p) => p.L === li && !p.used && !p.goal);
     const arches = [];
     const join = (a, b) => { a.used = b.used = true; arches.push([a, b]); };
-    (template.between || []).forEach((count, i) => {
-      for (let k = 0; k < count; k++) {
+    levels.forEach((_, i) => {
+      for (let k = 0; k < up(i); k++) {
         const pairs = [];
         free(i).forEach((a) => free(i + 1).forEach((b) => pairs.push([a, b, dist(a, b)])));
         if (!pairs.length) break;
@@ -117,8 +127,8 @@ window.LEVELGEN = (() => {
       }
     });
     let start = null;
-    (template.across || []).forEach((count, i) => {
-      for (let k = 0; k < count; k++) {
+    levels.forEach((_, i) => {
+      for (let k = 0; k < (pf[i].inner || 0); k++) {
         const left = shuffle(free(i));
         if (left.length < 2) break;
         join(left[0], left[1]);
@@ -149,5 +159,5 @@ window.LEVELGEN = (() => {
       start: [start[0].id, start[1].id],
     };
   }
-  return { TEMPLATE, generate, randomSeed: () => 1 + Math.floor(Math.random() * 99999) };
+  return { TEMPLATE, SIZES, LIMITS, generate, randomSeed: () => 1 + Math.floor(Math.random() * 99999) };
 })();

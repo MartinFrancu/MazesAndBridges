@@ -29,6 +29,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   font: 600 11px/1 var(--f-ui); letter-spacing: 0.2em; text-transform: uppercase;
   pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,0.4);
 }
+.in-setup .hud { opacity: 0; visibility: hidden; } /* nothing to time yet, and the setup scrolls underneath */
 .hud .stats { display: flex; gap: 12px; white-space: nowrap; align-items: center; font-variant-numeric: tabular-nums; }
 .hud button { pointer-events: auto; }
 
@@ -89,7 +90,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 .overlay {
   position: fixed; inset: 0; z-index: 3;
-  display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: 18px;
+  display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start; gap: 18px;
+  overflow-y: auto; overscroll-behavior: contain;
   padding-top: calc(env(safe-area-inset-top, 0px) + 32px);
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 40px);
   padding-left: max(24px, env(safe-area-inset-left, 0px));
@@ -98,6 +100,37 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   transition: opacity 1.2s ease;
 }
 .overlay.fade { opacity: 0; pointer-events: none; }
+.overlay > :first-child { margin-top: auto; } /* sit at the bottom when there is room, scroll when there is not */
+#intro { gap: 12px; }
+#intro p { font-size: 17px; line-height: 1.4; }
+#intro { background: linear-gradient(to top, rgba(27, 31, 58, 0.95) 0%, rgba(27, 31, 58, 0.8) 55%, rgba(27, 31, 58, 0) 90%); }
+
+/* maze setup: one card per platform, bottom platform first */
+.setup { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 30em; }
+.setup h2 { margin: 0; font: 600 11px/1 var(--f-ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); }
+.pf-list { display: flex; flex-direction: column-reverse; gap: 8px; } /* the top platform is listed first, as in the sky */
+.pf { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid rgba(241, 235, 247, 0.22); border-radius: 2px; background: rgba(27, 31, 58, 0.45); }
+.pf-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 600 11px/1.2 var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase; }
+.pf-head small { font-weight: 400; opacity: 0.7; letter-spacing: 0.1em; }
+.pf-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 400 12px/1.2 var(--f-ui); letter-spacing: 0.1em; text-transform: uppercase; }
+.pf-row > span { opacity: 0.8; }
+.seg, .step { display: flex; align-items: center; border: 1px solid rgba(241, 235, 247, 0.35); border-radius: 2px; }
+.seg button, .step button {
+  font: 600 11px/1 var(--f-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mist);
+  background: transparent; border: 0; padding: 9px 11px 7px; cursor: pointer; min-width: 34px;
+}
+.seg button[aria-pressed="true"] { background: rgba(255, 210, 138, 0.2); color: var(--gold); }
+.step output { min-width: 22px; text-align: center; font: 600 13px/1 var(--f-ui); font-variant-numeric: tabular-nums; color: var(--gold); }
+.step button:disabled { opacity: 0.3; cursor: default; }
+.seg button:focus-visible, .step button:focus-visible, .link-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.link-btn { font: 600 10px/1 var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--mist); opacity: 0.75; background: none; border: 0; padding: 6px 0; cursor: pointer; }
+.setup-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+.seed-row { display: flex; align-items: center; gap: 8px; font: 400 12px/1 var(--f-ui); letter-spacing: 0.1em; text-transform: uppercase; }
+.seed-row input {
+  width: 6.5em; font: 600 13px/1 var(--f-ui); font-variant-numeric: tabular-nums; color: var(--gold);
+  background: rgba(27, 31, 58, 0.45); border: 1px solid rgba(241, 235, 247, 0.35); border-radius: 2px; padding: 8px 8px 6px;
+}
+.seed-row input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .overlay h1 {
   margin: 0; font: italic 300 clamp(46px, 13vw, 92px)/0.92 var(--f-poem); letter-spacing: -0.01em; text-wrap: balance;
 }
@@ -135,10 +168,22 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 <section class="overlay" id="intro">
   <h1>Mazes <span>&amp;</span><br>Bridges</h1>
-  <p>Three hedge mazes float in the evening mist, one above another. Each plaza keeps a stone animal and a single arch. Some arches climb to the next terrace, some only cross the one you are on. The way out is on the highest terrace, beside a golden lantern.</p>
-  <span class="meta" id="seed-label"></span>
-  <span class="meta">Left side of the screen: walk and turn &middot; right side: look around &middot; WASD and R/F on a keyboard</span>
+  <p>Hedge mazes float in the evening mist, one above another. Each plaza keeps a stone animal and a single bridge. Find the bridges that climb: the way out is on the highest platform, beside a golden lantern.</p>
+  <div class="setup">
+    <h2>Your maze</h2>
+    <div class="pf-list" id="pf-list"></div>
+    <div class="setup-foot">
+      <button class="link-btn" id="pf-add" type="button">+ Add a platform</button>
+      <div class="seed-row">
+        <label for="seed-input">Maze number</label>
+        <input id="seed-input" type="text" inputmode="numeric" autocomplete="off">
+        <button class="link-btn" id="seed-new" type="button">New</button>
+      </div>
+    </div>
+    <span class="meta" id="built"></span>
+  </div>
   <button class="btn primary" id="enter" type="button">Enter the maze</button>
+  <span class="meta">Left side of the screen: walk and turn &middot; right side: look around &middot; WASD and R/F on a keyboard</span>
 </section>
 
 <section class="overlay fade" id="won" hidden>
@@ -210,7 +255,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const hex = (c) => "#" + c.toString(16).padStart(6, "0");
 
   function applyLayout(newSeed) {
-    const gen = LEVELGEN.generate(newSeed);
+    const gen = LEVELGEN.generate(newSeed, { ...LEVELGEN.TEMPLATE, platforms: setup.platforms });
     seed = gen.seed;
     rand = gen.random;
     LEVELS = gen.levels;
@@ -254,7 +299,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       m.z = z0 - 15 + Math.random() * (z1 - z0 + 30);
       m.y = -6 + Math.random() * (yTop + 20);
     });
-    $("#seed-label").textContent = `Maze number ${seed}`;
+    $("#seed-input").value = seed;
+    const repeats = PLAZAS.length - 1 > 10 ? " · some animals repeat" : "";
+    $("#built").textContent = `${PLAZAS.length} plazas · ${ARCHES.length} bridges${repeats}`;
   }
   const inRect = (p, x, z, m) => x > p.x0 + m && x < p.x1 - m && z > p.z0 + m && z < p.z1 - m;
 
@@ -1156,6 +1203,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
   function start() {
     initAudio();
+    document.body.classList.remove("in-setup");
     const intro = $("#intro");
     intro.classList.add("fade");
     setTimeout(() => { intro.hidden = true; }, 1200);
@@ -1177,15 +1225,115 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     });
   }
 
+  // back to the setup screen with a fresh maze number
   function again() {
     const w = $("#won");
     w.classList.add("fade");
     setTimeout(() => { w.hidden = true; }, 1200);
     buildWorld(LEVELGEN.randomSeed());
-    start();
+    mode = "intro";
+    document.body.classList.add("in-setup");
+    const intro = $("#intro");
+    intro.hidden = false;
+    requestAnimationFrame(() => intro.classList.remove("fade"));
   }
 
-  $("#enter").addEventListener("click", start);
+  // ---- maze setup -------------------------------------------------------------
+  const SETUP_KEY = "mazes-bridges-setup";
+  const { SIZES, LIMITS } = LEVELGEN;
+  const setup = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SETUP_KEY));
+      const ok = saved && Array.isArray(saved.platforms) && saved.platforms.length >= LIMITS.platforms[0] && saved.platforms.length <= LIMITS.platforms[1]
+        && saved.platforms.every((p) => SIZES[p.size] && p.inner >= LIMITS.inner[0] && p.inner <= LIMITS.inner[1]);
+      if (ok) return saved;
+    } catch (e) { /* no storage: use the defaults */ }
+    return { platforms: LEVELGEN.TEMPLATE.platforms.map((p) => ({ up: 1, ...p })) };
+  })();
+  const saveSetup = () => { try { localStorage.setItem(SETUP_KEY, JSON.stringify(setup)); } catch (e) { /* not kept */ } };
+
+  // changes rebuild the maze behind the screen after a short pause, so you can watch it take shape
+  let rebuildTimer = 0;
+  const rebuildSoon = () => { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { rebuildTimer = 0; buildWorld(seed); }, 450); };
+  const flushRebuild = () => { if (rebuildTimer) { clearTimeout(rebuildTimer); rebuildTimer = 0; buildWorld(seed); } };
+  const changed = () => { saveSetup(); renderSetup(); rebuildSoon(); };
+
+  function stepper(value, [lo, hi], onSet, label) {
+    const box = document.createElement("div");
+    box.className = "step";
+    const minus = document.createElement("button"), plus = document.createElement("button"), out = document.createElement("output");
+    minus.type = plus.type = "button";
+    minus.textContent = "−"; plus.textContent = "+";
+    minus.setAttribute("aria-label", `Fewer ${label}`); plus.setAttribute("aria-label", `More ${label}`);
+    minus.disabled = value <= lo; plus.disabled = value >= hi;
+    out.textContent = value;
+    minus.addEventListener("click", () => onSet(value - 1));
+    plus.addEventListener("click", () => onSet(value + 1));
+    box.append(minus, out, plus);
+    return box;
+  }
+  function row(label, control) {
+    const r = document.createElement("div");
+    r.className = "pf-row";
+    const l = document.createElement("span");
+    l.textContent = label;
+    r.append(l, control);
+    return r;
+  }
+
+  function renderSetup() {
+    const list = $("#pf-list");
+    list.innerHTML = "";
+    const count = setup.platforms.length;
+    setup.platforms.forEach((pf, i) => {
+      const top = i === count - 1;
+      const card = document.createElement("div");
+      card.className = "pf";
+      const head = document.createElement("div");
+      head.className = "pf-head";
+      const title = document.createElement("span");
+      title.innerHTML = `Platform ${i + 1} <small>${i === 0 ? "· you start here" : top ? "· the way out" : ""}</small>`;
+      head.append(title);
+      if (top && count > LIMITS.platforms[0]) {
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "link-btn";
+        rm.textContent = "Remove";
+        rm.addEventListener("click", () => { setup.platforms.pop(); changed(); });
+        head.append(rm);
+      }
+      const seg = document.createElement("div");
+      seg.className = "seg";
+      Object.keys(SIZES).forEach((size) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = size;
+        b.setAttribute("aria-pressed", String(pf.size === size));
+        b.addEventListener("click", () => { pf.size = size; changed(); });
+        seg.append(b);
+      });
+      card.append(head, row("Size", seg), row("Inner bridges", stepper(pf.inner, LIMITS.inner, (v) => { pf.inner = v; changed(); }, "inner bridges")));
+      if (!top) card.append(row("Bridges up", stepper(pf.up || 1, LIMITS.up, (v) => { pf.up = v; changed(); }, "bridges up")));
+      list.append(card);
+    });
+    $("#pf-add").hidden = count >= LIMITS.platforms[1];
+  }
+
+  $("#pf-add").addEventListener("click", () => {
+    const below = setup.platforms[setup.platforms.length - 1];
+    below.up = below.up || 1;
+    setup.platforms.push({ size: "small", inner: 0, up: 1 });
+    changed();
+  });
+  $("#seed-new").addEventListener("click", () => { seed = LEVELGEN.randomSeed(); $("#seed-input").value = seed; rebuildSoon(); });
+  $("#seed-input").addEventListener("change", (e) => {
+    const n = parseInt(e.target.value, 10);
+    if (n > 0) { seed = n; rebuildSoon(); } else e.target.value = seed;
+  });
+  renderSetup();
+  document.body.classList.add("in-setup");
+
+  $("#enter").addEventListener("click", () => { flushRebuild(); start(); });
   $("#again").addEventListener("click", again);
 
   // ---- wind ---------------------------------------------------------------
