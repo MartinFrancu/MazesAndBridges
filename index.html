@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,300;1,400&family=Josefin+Sans:wght@400;600&display=swap">
 <style>
-/* Layout: full-bleed 3D canvas; thin HUD on top, context actions at the thumb line, overlays for intro and ending. Single dusk look by design. */
+/* Layout: full-bleed 3D canvas; thin HUD on top, overlays for intro and ending. Single dusk look by design. */
 :root {
   --night: #1b1f3a;
   --dusk: #6b5a8e;
@@ -45,19 +45,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .btn.primary { border-color: var(--gold); color: var(--gold); }
 .btn.small { padding: 9px 11px 7px; font-size: 10px; white-space: nowrap; }
-.btn .sw { display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 50%; vertical-align: 0; }
-
-.actions {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
-  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 26px);
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  pointer-events: none;
-}
-.actions .btn { pointer-events: auto; animation: rise 0.6s ease-out both; }
-@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
-
 .place {
   position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 54px); z-index: 1;
   text-align: center; font: 600 11px/1 var(--f-ui); letter-spacing: 0.28em; text-transform: uppercase;
@@ -131,7 +118,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 @media (prefers-reduced-motion: reduce) {
   .overlay, .hint, .place { transition: none; }
-  .actions .btn { animation: none; }
 }
 </style>
 
@@ -147,7 +133,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <div class="place" id="place"></div>
 <div class="hint off" id="hint"></div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
-<div class="actions" id="actions"></div>
 
 <section class="overlay" id="intro">
   <h1>Mazes <span>&amp;</span><br>Bridges</h1>
@@ -746,7 +731,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   let mode = "intro";      // intro | ground | arch | anim | won
   let anim = null;
   let onArch = null;       // { arch, s, from, dir }
-  let nearFoot = null, blockedFoot = null, curPlaza = null;
+  let blockedFoot = null, curPlaza = null;
   let orbit = 0.6;
   const stats = { time: 0, arches: 0, plazas: new Set() };
   let lastTrail = null, running = false;
@@ -876,7 +861,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     Object.assign(player, { L: sp.level, x: sp.cx, z: sp.cz, yaw: 0, pitch: 0, bob: 0 });
     stats.time = 0; stats.arches = 0; stats.plazas = new Set();
     lastTrail = null;
-    onArch = nearFoot = blockedFoot = curPlaza = null;
+    onArch = blockedFoot = curPlaza = null;
   }
 
   // ---- movement & collision ----------------------------------------------
@@ -970,15 +955,14 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     if (f && look.id === null) player.pitch = lerp(player.pitch, 0, Math.min(1, dt * 1.5));
     Object.assign(cam, { x: player.x, z: player.z, y: L.y + EYE + Math.sin(player.bob) * 0.035, yaw: player.yaw, pitch: player.pitch, roll: 0 });
 
-    // arch feet: walking onto one starts the climb, standing near one offers a button
+    // arch feet: walking onto one starts the climb
     let near = null, nd = 3.2;
     for (const o of feetOn(L)) {
       const d = Math.hypot(player.x - o.ft.x, player.z - o.ft.z);
       if (blockedFoot && blockedFoot.ft === o.ft) { if (d > 2.4) blockedFoot = null; else continue; }
       if (d < nd) { nd = d; near = o; }
     }
-    if (near && nd < 0.9 && f > 0) { enterArch(near, false); return; }
-    if ((near && near.ft) !== (nearFoot && nearFoot.ft)) { nearFoot = near; refreshActions(); }
+    if (near && nd < 0.9 && f > 0) { enterArch(near); return; }
 
     // plazas
     const pl = L.statues.find((p) => inRect(p, player.x, player.z, 0.3)) || null;
@@ -1004,25 +988,15 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   // ---- arch walking ----------------------------------------------------------
-  function enterArch(o, viaButton) {
-    const { arch, end, ft } = o;
+  function enterArch(o) {
+    const { arch, end } = o;
     const s = end === 0 ? 0.05 : arch.len - 0.05;
-    const { p, tan } = archAt(arch, s);
+    const { tan } = archAt(arch, s);
     const dir = end === 0 ? 1 : -1;
-    const yaw = yawOf(tan.x * dir, tan.z * dir);
-    const go = () => {
-      onArch = { arch, s, from: end, dir: 1 };
-      mode = "arch";
-      nearFoot = null;
-      refreshActions();
-      if (!archHintShown.on) { archHintShown.on = true; showHint("Walk with the left side. Drag the right side to look down.", 7000); }
-    };
-    if (viaButton) {
-      tweenTo({ x: p.x, y: p.y + EYE, z: p.z, yaw, pitch: player.pitch }, 0.9, () => { player.yaw = yaw; go(); });
-    } else {
-      player.yaw = yaw;
-      go();
-    }
+    player.yaw = yawOf(tan.x * dir, tan.z * dir);
+    onArch = { arch, s, from: end, dir: 1 };
+    mode = "arch";
+    if (!archHintShown.on) { archHintShown.on = true; showHint("Walk with the left side. Drag the right side to look down.", 7000); }
   }
 
   function updateArch(dt) {
@@ -1071,7 +1045,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     onArch = null;
     mode = "ground";
     curPlaza = null;
-    refreshActions();
   }
 
   function orbitPose(a) {
@@ -1083,7 +1056,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   // ---- transitions --------------------------------------------------------
   function play(dur, step, done) {
     mode = "anim";
-    refreshActions();
     anim = { t: 0, dur, step, done };
   }
 
@@ -1132,30 +1104,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   }
 
   // ---- UI -------------------------------------------------------------------
-  function button(label, fn, cls, swatch) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "btn" + (cls ? " " + cls : "");
-    if (swatch != null) {
-      const s = document.createElement("span");
-      s.className = "sw";
-      s.style.background = hex(swatch);
-      b.append(s);
-    }
-    b.append(label);
-    b.addEventListener("click", () => { initAudio(); fn(); });
-    $("#actions").append(b);
-  }
-
-  function refreshActions() {
-    $("#actions").innerHTML = "";
-    if (mode === "ground" && nearFoot) {
-      const other = nearFoot.arch.feet[1 - nearFoot.end].plaza;
-      const nf = nearFoot;
-      button(`Climb the arch to the ${other.name}`, () => enterArch(nf, true), "primary", other.color);
-    }
-  }
-
   function start() {
     initAudio();
     document.body.classList.remove("in-setup");
@@ -1175,7 +1123,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       mode = "arch";
       running = true;
       archHintShown.on = true;
-      refreshActions();
       showHint("You stand high above the maze. Drag the right side to look around, the left side to walk down.", 9000);
     });
   }
@@ -1373,10 +1320,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   window.addEventListener("keydown", (e) => {
     keys.add(e.code);
     if (e.code.startsWith("Arrow")) e.preventDefault();
-    if ((e.code === "Space" || e.code === "Enter") && e.target === document.body) {
-      const first = $("#actions .btn");
-      if (first) { e.preventDefault(); first.click(); }
-    }
   });
   window.addEventListener("keyup", (e) => keys.delete(e.code));
   window.addEventListener("blur", () => keys.clear());
