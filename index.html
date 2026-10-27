@@ -52,12 +52,19 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 }
 .place.on { opacity: 0.95; }
 
-.hint {
-  position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 1;
-  text-align: center; font: 400 12px/1.4 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase;
-  opacity: 0.85; transition: opacity 1.5s; pointer-events: none; padding: 0 16px; text-wrap: balance;
+.info-btn {
+  pointer-events: auto; width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  font: italic 400 20px/1 var(--f-poem); color: var(--mist); background: var(--veil);
+  border: 1px solid rgba(241, 235, 247, 0.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
-.hint.off { opacity: 0; }
+.info-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* help & settings: opened from the info button, pauses the walk */
+#help { z-index: 4; background: rgba(27, 31, 58, 0.88); }
+#help h2 { margin: 0; font: italic 300 clamp(34px, 9vw, 52px)/1 var(--f-poem); }
+#help ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; max-width: 30em; font: 400 17px/1.4 var(--f-poem); }
+#help li b { font: 600 11px/1 var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); display: block; margin-bottom: 4px; }
+#help .setting { display: flex; align-items: center; gap: 14px; font: 400 12px/1 var(--f-ui); letter-spacing: 0.12em; text-transform: uppercase; }
 
 .joy { position: fixed; width: 116px; height: 116px; margin: -58px 0 0 -58px; border-radius: 50%;
   border: 1px solid rgba(241, 235, 247, 0.4); pointer-events: none; z-index: 1; }
@@ -117,7 +124,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .err { font: 400 15px/1.5 var(--f-ui); }
 
 @media (prefers-reduced-motion: reduce) {
-  .overlay, .hint, .place { transition: none; }
+  .overlay, .place { transition: none; }
 }
 </style>
 
@@ -126,12 +133,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <div class="hud">
   <span class="stats">
     <span id="speed" hidden></span>
-    <button class="btn small" id="mute" type="button" aria-pressed="false">Sound on</button>
+    <button class="info-btn" id="info" type="button" aria-label="Help and settings">i</button>
   </span>
 </div>
 
 <div class="place" id="place"></div>
-<div class="hint off" id="hint"></div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
 
 <section class="overlay" id="intro">
@@ -150,6 +156,22 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   </div>
   <button class="btn primary" id="enter" type="button">Enter the maze</button>
   <span class="meta">Left side of the screen: walk and turn &middot; right side: look around &middot; WASD and R/F on a keyboard</span>
+</section>
+
+<section class="overlay" id="help" hidden>
+  <h2>How to play</h2>
+  <ul>
+    <li><b>Walk</b>Drag on the left side of the screen: up and down to walk, sideways to turn.</li>
+    <li><b>Look</b>Drag on the right side to look around. On an arch, look down to see the maze below.</li>
+    <li><b>Arches</b>Walk into the foot of an arch to climb it. Some lead up to the next platform, some only cross the one you are on.</li>
+    <li><b>The way out</b>A golden lantern on the highest platform.</li>
+    <li><b>Keyboard</b>WASD or arrow keys to walk and turn, R and F to look up and down.</li>
+  </ul>
+  <div class="setting">
+    <span>Sound</span>
+    <button class="btn small" id="mute" type="button" aria-pressed="false">On</button>
+  </div>
+  <button class="btn primary" id="help-close" type="button">Back to the maze</button>
 </section>
 
 <section class="overlay fade" id="won" hidden>
@@ -735,7 +757,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   let orbit = 0.6;
   const stats = { time: 0, arches: 0, plazas: new Set() };
   let lastTrail = null, running = false;
-  const archHintShown = { on: false };
 
   function disposeWorld() {
     if (!world) return;
@@ -949,7 +970,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const moved = Math.hypot(p.x - player.x, p.z - player.z);
       player.x = p.x; player.z = p.z;
       player.bob += moved * 2.6;
-      if (moved > 0) hideHint();
       dropTrail();
     }
     if (f && look.id === null) player.pitch = lerp(player.pitch, 0, Math.min(1, dt * 1.5));
@@ -996,7 +1016,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     player.yaw = yawOf(tan.x * dir, tan.z * dir);
     onArch = { arch, s, from: end, dir: 1 };
     mode = "arch";
-    if (!archHintShown.on) { archHintShown.on = true; showHint("Walk with the left side. Drag the right side to look down.", 7000); }
   }
 
   function updateArch(dt) {
@@ -1015,7 +1034,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     showSpeed(v);
     const move = sign * v * dt;
     onArch.s += move;
-    if (move) { player.bob += Math.abs(move) * 2.6; hideHint(); }
+    if (move) player.bob += Math.abs(move) * 2.6;
 
     if (onArch.s <= 0 || onArch.s >= a.len) { leaveArch(onArch.s <= 0 ? 0 : 1); return; }
 
@@ -1069,7 +1088,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     }, done);
   }
 
-  let placeTimer = 0, hintTimer = 0;
+  let placeTimer = 0;
   function showPlace(p) {
     const el = $("#place");
     el.textContent = `The ${p.name}`;
@@ -1078,14 +1097,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     clearTimeout(placeTimer);
     placeTimer = setTimeout(() => el.classList.remove("on"), 3200);
   }
-  function showHint(text, ms) {
-    const el = $("#hint");
-    el.textContent = text;
-    el.classList.remove("off");
-    clearTimeout(hintTimer);
-    hintTimer = setTimeout(hideHint, ms);
-  }
-  function hideHint() { $("#hint").classList.add("off"); }
 
   function win() {
     mode = "won";
@@ -1122,8 +1133,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       onArch = { arch: sa, s: s0, from: -1, dir: toward };
       mode = "arch";
       running = true;
-      archHintShown.on = true;
-      showHint("You stand high above the maze. Drag the right side to look around, the left side to walk down.", 9000);
     });
   }
 
@@ -1272,9 +1281,21 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   $("#mute").addEventListener("click", () => {
     muted = !muted;
     initAudio();
-    $("#mute").textContent = muted ? "Sound off" : "Sound on";
+    $("#mute").textContent = muted ? "Off" : "On";
     $("#mute").setAttribute("aria-pressed", String(muted));
   });
+
+  // ---- help & settings --------------------------------------------------------
+  let helpOpen = false;
+  const setHelp = (open) => {
+    helpOpen = open;
+    $("#help").hidden = !open;
+    keys.clear();
+    (open ? $("#help-close") : $("#info")).focus();
+  };
+  $("#info").addEventListener("click", () => setHelp(true));
+  $("#help-close").addEventListener("click", () => setHelp(false));
+  window.addEventListener("keydown", (e) => { if (e.code === "Escape" && helpOpen) setHelp(false); });
 
   // ---- input ----------------------------------------------------------------
   const canvas = $("#c"), joyEl = $("#joy"), knob = $("#knob");
@@ -1298,7 +1319,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       player.yaw -= (e.clientX - look.lx) * LOOK;
       player.pitch = clamp(player.pitch - (e.clientY - look.ly) * LOOK, -1.35, 0.9);
       look.lx = e.clientX; look.ly = e.clientY;
-      hideHint();
       return;
     }
     if (e.pointerId !== joy.id) return;
@@ -1350,11 +1370,12 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const k = Math.min(1, anim.t / anim.dur);
       anim.step(k);
       if (k >= 1) { const a = anim; anim = null; a.done(); }
-    } else if (mode === "ground") updateGround(dt);
+    } else if (helpOpen) { /* paused while help is open */ }
+    else if (mode === "ground") updateGround(dt);
     else if (mode === "arch") updateArch(dt);
     else if (mode === "intro" || mode === "won") { orbit += dt * 0.03; Object.assign(cam, orbitPose(orbit)); }
 
-    if (running) stats.time += dt; // shown on the end screen
+    if (running && !helpOpen) stats.time += dt; // shown on the end screen
 
     camera.position.set(cam.x, cam.y, cam.z);
     camera.rotation.set(cam.pitch, cam.yaw, cam.roll || 0);
@@ -1365,7 +1386,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     if (onArch) lift = Math.max(lift, clamp((cam.y - EYE - onArch.arch.lowY) / 10, 0, 1));
     if (mode === "intro" || mode === "won") lift = 1;
     scene.fog.density = lerp(FOG_LOW, FOG_HIGH, smooth(lift));
-    setWind(lerp(0.05, 0.28, lift));
+    setWind(helpOpen ? 0 : lerp(0.05, 0.28, lift));
 
     const s = now / 1000;
     for (let i = 0; i < MOTES; i++) {
