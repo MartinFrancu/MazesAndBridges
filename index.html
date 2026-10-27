@@ -259,7 +259,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       p.sx = p.cx - kx * CORNER; p.sz = p.cz - kz * CORNER;
     });
 
-    // frame the whole layout: sun, shadows, drifting motes and the overview orbit
+    // frame the whole layout: sun, shadows and the overview orbit
     const x0 = Math.min(...LEVELS.map((L) => L.cx - L.half)), x1 = Math.max(...LEVELS.map((L) => L.cx + L.half));
     const z0 = Math.min(...LEVELS.map((L) => L.cz - L.half)), z1 = Math.max(...LEVELS.map((L) => L.cz + L.half));
     const yTop = Math.max(...LEVELS.map((L) => L.y));
@@ -270,11 +270,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const ext = worldR + 10;
     Object.assign(sunLight.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext });
     sunLight.shadow.camera.updateProjectionMatrix();
-    moteBase.forEach((m) => {
-      m.x = x0 - 15 + Math.random() * (x1 - x0 + 30);
-      m.z = z0 - 15 + Math.random() * (z1 - z0 + 30);
-      m.y = -6 + Math.random() * (yTop + 20);
-    });
     $("#seed-input").value = seed;
     const repeats = PLAZAS.length - 1 > 10 ? " · some animals repeat" : "";
     $("#built").textContent = `${PLAZAS.length} plazas · ${ARCHES.length} bridges${repeats}`;
@@ -353,21 +348,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   sunLight.shadow.bias = -0.0006;
   sunLight.shadow.normalBias = 0.02;
   scene.add(sunLight, sunLight.target);
-
-  // drifting motes, the same in every maze
-  const MOTES = 900;
-  const motePos = new Float32Array(MOTES * 3);
-  const moteBase = [];
-  for (let i = 0; i < MOTES; i++) {
-    moteBase.push({ x: -60 + Math.random() * 180, y: -6 + Math.random() * 50, z: -160 + Math.random() * 220, p: Math.random() * 6.28 });
-  }
-  const moteGeo = new THREE.BufferGeometry();
-  moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
-  const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
-    size: 0.18, map: GLOW, color: 0xffd9a8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  }));
-  motes.frustumCulled = false;
-  scene.add(motes);
 
   // ---- maze ------------------------------------------------------------
   // h[j][i]: wall on the line between rows j-1 and j; v[j][i]: between columns i-1 and i.
@@ -1389,13 +1369,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     setWind(helpOpen ? 0 : lerp(0.05, 0.28, lift));
 
     const s = now / 1000;
-    for (let i = 0; i < MOTES; i++) {
-      const b = moteBase[i];
-      motePos[i * 3] = b.x + Math.sin(s * 0.21 + b.p) * 1.4;
-      motePos[i * 3 + 1] = b.y + Math.sin(s * 0.5 + b.p * 2) * 0.5;
-      motePos[i * 3 + 2] = b.z + Math.cos(s * 0.17 + b.p) * 1.4;
-    }
-    moteGeo.attributes.position.needsUpdate = true;
     PLAZAS.forEach((p) => {
       if (p.spin) p.spin.rotation.y += dt * 0.25;
       if (p.beam) p.beam.material.opacity = 0.1 + Math.sin(s * 1.7) * 0.04;
