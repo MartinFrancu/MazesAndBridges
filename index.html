@@ -150,7 +150,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 <div class="hud">
   <span class="stats">
-    <span id="clock">0:00</span>
     <span id="speed" hidden></span>
     <span id="found">0 plazas</span>
     <button class="btn small" id="mute" type="button" aria-pressed="false">Wind on</button>
@@ -1451,10 +1450,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     else if (mode === "arch") updateArch(dt);
     else if (mode === "intro" || mode === "won") { orbit += dt * 0.03; Object.assign(cam, orbitPose(orbit)); }
 
-    if (running) {
-      stats.time += dt;
-      $("#clock").textContent = fmtTime(stats.time);
-    }
+    if (running) stats.time += dt; // shown on the end screen
 
     camera.position.set(cam.x, cam.y, cam.z);
     camera.rotation.set(cam.pitch, cam.yaw, cam.roll || 0);
