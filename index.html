@@ -65,17 +65,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 }
 .place.on { opacity: 0.95; }
 
-.poem {
-  position: fixed; left: 0; right: 0; top: 20%; z-index: 1;
-  padding-left: max(24px, env(safe-area-inset-left, 0px));
-  padding-right: max(24px, env(safe-area-inset-right, 0px));
-  text-align: center; text-wrap: balance;
-  font: italic 300 clamp(24px, 5.4vw, 38px)/1.2 var(--f-poem);
-  color: var(--mist); text-shadow: 0 2px 18px rgba(27, 31, 58, 0.7);
-  opacity: 0; transition: opacity 2.4s ease; pointer-events: none;
-}
-.poem.on { opacity: 1; }
-
 .hint {
   position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 1;
   text-align: center; font: 400 12px/1.4 var(--f-ui); letter-spacing: 0.14em; text-transform: uppercase;
@@ -141,7 +130,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 .err { font: 400 15px/1.5 var(--f-ui); }
 
 @media (prefers-reduced-motion: reduce) {
-  .poem, .overlay, .hint, .place { transition: none; }
+  .overlay, .hint, .place { transition: none; }
   .actions .btn { animation: none; }
 }
 </style>
@@ -157,7 +146,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 </div>
 
 <div class="place" id="place"></div>
-<div class="poem" id="poem"></div>
 <div class="hint off" id="hint"></div>
 <div class="joy" id="joy" hidden><i id="knob"></i></div>
 <div class="actions" id="actions"></div>
@@ -223,18 +211,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   let seed = 0, rand = Math.random;
   const worldC = { x: 0, y: 0, z: 0 };
   let worldR = 100;
-
-  const POEMS = [
-    "From up here the walls are only handwriting.",
-    "The way out was drawn long before you arrived.",
-    "Each wrong turn was part of the shape.",
-    "Below, the hedges repeat the same few words.",
-    "Distance is easier to forgive from above.",
-    "The wind has never needed a map.",
-    "What was a wall is now a line of shadow.",
-    "Every floor is somebody's ceiling.",
-    "The stairs remember both directions.",
-  ];
 
   // ---- helpers ---------------------------------------------------------
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -770,13 +746,12 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   const cam = { x: 0, y: 30, z: 40, yaw: 0, pitch: -0.6, roll: 0 };
   let mode = "intro";      // intro | ground | arch | anim | won
   let anim = null;
-  let onArch = null;       // { arch, s, enteredAt, poemShown }
+  let onArch = null;       // { arch, s, from, dir }
   let nearFoot = null, blockedFoot = null, curPlaza = null;
   let orbit = 0.6;
   const stats = { time: 0, arches: 0, plazas: new Set() };
   const updateFound = () => { $("#found").textContent = `${stats.plazas.size}/${PLAZAS.length} plazas`; };
   let lastTrail = null, running = false;
-  let poemIdx = (Math.random() * POEMS.length) | 0;
   const archHintShown = { on: false };
 
   function disposeWorld() {
@@ -1040,7 +1015,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const dir = end === 0 ? 1 : -1;
     const yaw = yawOf(tan.x * dir, tan.z * dir);
     const go = () => {
-      onArch = { arch, s, from: end, poemShown: false, dir: 1 };
+      onArch = { arch, s, from: end, dir: 1 };
       mode = "arch";
       nearFoot = null;
       refreshActions();
@@ -1082,13 +1057,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     cam.pitch = player.pitch;
     cam.roll = Math.sin(performance.now() / 900) * 0.012 * narrow;
 
-    if (!onArch.poemShown && at.u > 0.35 && at.u < 0.65) {
-      onArch.poemShown = true;
-      poemIdx = (poemIdx + 1) % POEMS.length;
-      $("#poem").textContent = POEMS[poemIdx];
-      $("#poem").classList.add("on");
-    }
-    if (at.u < 0.15 || at.u > 0.85) hidePoem();
   }
 
   function leaveArch(end) {
@@ -1105,7 +1073,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     player.x = p.x; player.z = p.z;
     blockedFoot = { ft };
     onArch = null;
-    hidePoem();
     mode = "ground";
     curPlaza = null;
     refreshActions();
@@ -1151,12 +1118,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     hintTimer = setTimeout(hideHint, ms);
   }
   function hideHint() { $("#hint").classList.add("off"); }
-  function hidePoem() { $("#poem").classList.remove("on"); }
 
   function win() {
     mode = "won";
     running = false;
-    hidePoem();
     $("#w-time").textContent = fmtTime(stats.time);
     $("#w-arches").textContent = stats.arches;
     $("#w-plazas").textContent = stats.plazas.size;
@@ -1210,7 +1175,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const yaw = yawOf(at.tan.x * toward, at.tan.z * toward), pitch = -0.35;
     tweenTo({ x: at.p.x, y: at.p.y + EYE, z: at.p.z, yaw, pitch }, 4.6, () => {
       Object.assign(player, { yaw, pitch });
-      onArch = { arch: sa, s: s0, from: -1, poemShown: true, dir: toward };
+      onArch = { arch: sa, s: s0, from: -1, dir: toward };
       mode = "arch";
       running = true;
       archHintShown.on = true;
