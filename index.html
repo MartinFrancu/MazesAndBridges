@@ -22,7 +22,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 .hud {
   position: fixed; top: 0; left: 0; right: 0; z-index: 2;
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  display: flex; justify-content: flex-end; align-items: center; gap: 12px;
   padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -149,7 +149,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <canvas id="c"></canvas>
 
 <div class="hud">
-  <span>Mazes &amp; Bridges</span>
   <span class="stats">
     <span id="clock">0:00</span>
     <span id="speed" hidden></span>
