@@ -152,7 +152,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   <span class="stats">
     <span id="speed" hidden></span>
     <span id="found">0 plazas</span>
-    <button class="btn small" id="mute" type="button" aria-pressed="false">Wind on</button>
+    <button class="btn small" id="mute" type="button" aria-pressed="false">Sound on</button>
   </span>
 </div>
 
@@ -1364,7 +1364,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   $("#mute").addEventListener("click", () => {
     muted = !muted;
     initAudio();
-    $("#mute").textContent = muted ? "Wind off" : "Wind on";
+    $("#mute").textContent = muted ? "Sound off" : "Sound on";
     $("#mute").setAttribute("aria-pressed", String(muted));
   });
 
