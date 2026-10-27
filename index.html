@@ -140,7 +140,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <div class="hud">
   <span class="stats">
     <span id="speed" hidden></span>
-    <span id="found">0 plazas</span>
     <button class="btn small" id="mute" type="button" aria-pressed="false">Sound on</button>
   </span>
 </div>
@@ -750,7 +749,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   let nearFoot = null, blockedFoot = null, curPlaza = null;
   let orbit = 0.6;
   const stats = { time: 0, arches: 0, plazas: new Set() };
-  const updateFound = () => { $("#found").textContent = `${stats.plazas.size}/${PLAZAS.length} plazas`; };
   let lastTrail = null, running = false;
   const archHintShown = { on: false };
 
@@ -877,7 +875,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const sp = plazaById[START_ON[0]];
     Object.assign(player, { L: sp.level, x: sp.cx, z: sp.cz, yaw: 0, pitch: 0, bob: 0 });
     stats.time = 0; stats.arches = 0; stats.plazas = new Set();
-    updateFound();
     lastTrail = null;
     onArch = nearFoot = blockedFoot = curPlaza = null;
   }
@@ -989,7 +986,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       curPlaza = pl;
       if (pl) {
         stats.plazas.add(pl.id);
-        updateFound();
         showPlace(pl);
         if (pl.goal) win();
       }
