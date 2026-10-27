@@ -106,7 +106,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 
 /* maze setup: one card per platform, bottom platform first */
 .setup { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 30em; }
-.setup h2 { margin: 0; font: 600 11px/1 var(--f-ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); }
 .pf-list { display: flex; flex-direction: column-reverse; gap: 8px; } /* the top platform is listed first, as in the sky */
 .pf { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid rgba(241, 235, 247, 0.22); border-radius: 2px; background: rgba(27, 31, 58, 0.45); }
 .pf-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 600 11px/1.2 var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase; }
@@ -168,7 +167,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <section class="overlay" id="intro">
   <h1>Mazes <span>&amp;</span><br>Bridges</h1>
   <div class="setup">
-    <h2>Your maze</h2>
     <div class="pf-list" id="pf-list"></div>
     <div class="setup-foot">
       <button class="link-btn" id="pf-add" type="button">+ Add a platform</button>
