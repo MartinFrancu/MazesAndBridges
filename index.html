@@ -180,6 +180,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     <li><b>On a computer</b>W/S or the up and down arrows walk, A/D or left and right turn, R and F look up and down. You can also drag with the mouse: left half to walk, right half to look.</li>
   </ul>
   <div class="setting">
+    <span>Look</span>
+    <div class="seg" id="theme-seg"></div>
+  </div>
+  <div class="setting">
     <span>Sound</span>
     <button class="btn small" id="mute" type="button" aria-pressed="true">Off</button>
   </div>
@@ -200,6 +204,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="movement.js"></script>
 <script src="levels.js"></script>
+<script src="themes.js"></script>
 <script>
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -300,9 +305,15 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   renderer.shadowMap.enabled = SHADOWS;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  const MIST = 0xe39f88;
+  // ---- theme ------------------------------------------------------------
+  const THEME_KEY = "mazes-bridges-theme";
+  let themeKey = "dusk";
+  try { const t = localStorage.getItem(THEME_KEY); if (THEMES[t]) themeKey = t; } catch (e) { /* default */ }
+  let theme = THEMES[themeKey];
+  const C = (hex) => new THREE.Color(hex);
+
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(MIST, FOG_LOW);
+  scene.fog = new THREE.FogExp2(theme.fog, FOG_LOW);
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 900);
   camera.rotation.order = "YXZ";
 
@@ -327,22 +338,23 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: {
-        zen: { value: new THREE.Color(0x1b1f3a) },
-        mid: { value: new THREE.Color(0x6b5a8e) },
-        hor: { value: new THREE.Color(MIST) },
-        low: { value: new THREE.Color(0x8a6a86) },
+        zen: { value: new THREE.Color() },
+        mid: { value: new THREE.Color() },
+        hor: { value: new THREE.Color() },
+        low: { value: new THREE.Color() },
+        glow: { value: new THREE.Vector3() },
         sun: { value: sunDir },
       },
       vertexShader: "varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
       fragmentShader: [
-        "uniform vec3 zen, mid, hor, low, sun; varying vec3 vDir;",
+        "uniform vec3 zen, mid, hor, low, glow, sun; varying vec3 vDir;",
         "void main(){",
         "  float h = vDir.y;",
         "  vec3 c = mix(hor, mid, smoothstep(0.0, 0.22, h));",
         "  c = mix(c, zen, smoothstep(0.22, 0.85, h));",
         "  c = mix(c, low, smoothstep(0.0, -0.9, h));",
         "  float s = max(dot(vDir, normalize(sun)), 0.0);",
-        "  c += vec3(1.0, 0.82, 0.58) * (pow(s, 900.0) * 1.6 + pow(s, 14.0) * 0.3);",
+        "  c += glow * (pow(s, 900.0) * 1.6 + pow(s, 14.0) * 0.3);",
         "  gl_FragColor = vec4(c, 1.0);",
         "}",
       ].join("\n"),
@@ -350,8 +362,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   );
   scene.add(sky);
 
-  scene.add(new THREE.HemisphereLight(0xb7a5dc, 0x4a3448, 0.85));
-  const sunLight = new THREE.DirectionalLight(0xffc29a, 0.95);
+  const hemiLight = new THREE.HemisphereLight();
+  scene.add(hemiLight);
+  const sunLight = new THREE.DirectionalLight();
   sunLight.target.position.set(30, 14, -60);
   sunLight.position.set(-0.55, 0.62, -0.56).normalize().multiplyScalar(160).add(sunLight.target.position);
   sunLight.castShadow = true;
@@ -360,6 +373,74 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   sunLight.shadow.bias = -0.0006;
   sunLight.shadow.normalBias = 0.02;
   scene.add(sunLight, sunLight.target);
+
+  // sky, mist and light follow the theme; everything else is rebuilt with it
+  function applyTheme() {
+    const u = sky.material.uniforms, t = theme.sky;
+    u.zen.value.set(t.zen); u.mid.value.set(t.mid); u.hor.value.set(t.hor); u.low.value.set(t.low);
+    u.glow.value.set(...t.glow);
+    scene.fog.color.set(theme.fog);
+    hemiLight.color.set(theme.hemi[0]); hemiLight.groundColor.set(theme.hemi[1]); hemiLight.intensity = theme.hemi[2];
+    sunLight.color.set(theme.sun[0]); sunLight.intensity = theme.sun[1];
+  }
+  applyTheme();
+
+  // surface patterns drawn in the shader, in world space, so they line up across walls
+  const PATTERNS = {
+    // engraving: brick courses and joints on the sides of walls, fading out with distance so far walls stay clean
+    bricks: `{
+      float side = 1.0 - step(0.6, abs(vWN.y));
+      float fade = 1.0 - smoothstep(18.0, 55.0, vDist);
+      float ly = vWP.y * 3.0, course = floor(ly);
+      float along = abs(vWN.x) > 0.5 ? vWP.z : vWP.x;
+      float bed = step(0.86, fract(ly)), joint = step(0.93, fract(along * 0.9 + course * 0.5));
+      diffuseColor.rgb = mix(diffuseColor.rgb, uLine, side * fade * max(bed, joint) * 0.85);
+    }`,
+    // black-figure vase: two painted bands and a square-wave key between them, a thin band near the ground
+    frieze: `{
+      float side = 1.0 - step(0.6, abs(vWN.y));
+      float ly = mod(vWP.y + 2.0, ${LEVELGEN.TEMPLATE.rise.toFixed(1)}) - 2.0;
+      float along = abs(vWN.x) > 0.5 ? vWP.z : vWP.x;
+      float band = step(2.55, ly) * step(ly, 2.62) + step(3.05, ly) * step(ly, 3.12) + step(0.3, ly) * step(ly, 0.38);
+      float yy = clamp((ly - 2.66) / 0.35, 0.0, 1.0), k = fract(along * 1.3);
+      float key = step(2.66, ly) * step(ly, 3.01) * max(step(k, 0.12), mix(step(0.75, yy), step(yy, 0.25), step(0.5, k)));
+      float fade = 1.0 - smoothstep(25.0, 70.0, vDist);
+      diffuseColor.rgb = mix(diffuseColor.rgb, uLine, side * min(1.0, band + key * fade));
+    }`,
+    // checkered paving
+    checker: `{
+      float c = mod(floor(vWP.x / 1.5) + floor(vWP.z / 1.5), 2.0);
+      diffuseColor.rgb = mix(diffuseColor.rgb, uLine, c * 0.85);
+    }`,
+  };
+  function patterned(mat, style, line) {
+    if (!PATTERNS[style]) return mat;
+    const lineColor = C(line);
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uLine = { value: lineColor };
+      sh.vertexShader = "varying vec3 vWP;\nvarying vec3 vWN;\nvarying float vDist;\n" + sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>
+        vec4 wp4 = vec4(transformed, 1.0);
+        vec3 wn = objectNormal;
+        #ifdef USE_INSTANCING
+          wp4 = instanceMatrix * wp4;
+          wn = mat3(instanceMatrix) * wn;
+        #endif
+        vWP = (modelMatrix * wp4).xyz;
+        vWN = normalize(mat3(modelMatrix) * wn);
+        vDist = -mvPosition.z;`);
+      sh.fragmentShader = "uniform vec3 uLine;\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying float vDist;\n"
+        + sh.fragmentShader.replace("#include <color_fragment>", "#include <color_fragment>\n" + PATTERNS[style]);
+    };
+    mat.customProgramCacheKey = () => style;
+    return mat;
+  }
+  // hedges: ice is see-through and glossy, the rest are matte with an optional pattern
+  function hedgeMaterial() {
+    if (theme.hedgeStyle === "ice") {
+      return new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: theme.opacity, depthWrite: false, shininess: 90, specular: 0xffffff });
+    }
+    return patterned(new THREE.MeshLambertMaterial({ color: 0xffffff }), theme.hedgeStyle, theme.line);
+  }
 
   // ---- maze ------------------------------------------------------------
   // h[j][i]: wall on the line between rows j-1 and j; v[j][i]: between columns i-1 and i.
@@ -472,7 +553,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   function archMesh(arch, colA, colB) {
     const { pts } = arch, M = pts.length;
     const sx = -arch.uz, sz = arch.ux;
-    const stone = new THREE.Color(0xe8dfd4), ca = new THREE.Color(colA).lerp(stone, 0.25), cb = new THREE.Color(colB).lerp(stone, 0.25);
+    const stone = C(theme.stone), ca = C(colA).lerp(stone, 1 - theme.archTint), cb = C(colB).lerp(stone, 1 - theme.archTint);
+    const [lineHex, lineAmt] = theme.archLine, lineCol = C(lineHex);
     const corners = pts.map((p, i) => {
       const u = i / (M - 1), s = Math.pow(Math.sin(Math.PI * u), 0.55);
       const w = lerp(2.8, 0.34, s) / 2, th = lerp(2.4, 0.3, s);
@@ -486,9 +568,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       const c = stone.clone();
       if (u < 0.25) c.lerp(ca, 1 - u / 0.25);
       if (u > 0.75) c.lerp(cb, (u - 0.75) / 0.25);
-      // faint step lines every ~45 cm of arc
-      const step = (arch.cum[i] % 0.45) < 0.09 ? 0.86 : 1;
-      return [c.r * step, c.g * step, c.b * step];
+      // step lines every ~45 cm of arc
+      const plain = [c.r, c.g, c.b];
+      if ((arch.cum[i] % 0.45) < 0.09) c.lerp(lineCol, lineAmt);
+      return { top: [c.r, c.g, c.b], side: plain };
     });
     const pos = [], col = [], idx = [];
     [[0, 1], [1, 2], [2, 3], [3, 0]].forEach(([a, b], face) => {
@@ -496,7 +579,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       for (let i = 0; i < M; i++) {
         pos.push(...corners[i][a], ...corners[i][b]);
         const k = face === 0 ? 1 : 0.8;
-        const c = face === 0 ? colors[i] : colors[i].map((v) => v / (((arch.cum[i] % 0.45) < 0.09) ? 0.86 : 1));
+        const c = face === 0 ? colors[i].top : colors[i].side;
         col.push(c[0] * k, c[1] * k, c[2] * k, c[0] * k, c[1] * k, c[2] * k);
       }
       for (let i = 0; i < M - 1; i++) {
@@ -528,9 +611,18 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   // low-poly animals built from a handful of faceted primitives; each faces +x
   function buildAnimal(kind, color) {
     const g = new THREE.Group();
-    const c = new THREE.Color(color);
     const std = (col, glow) => new THREE.MeshStandardMaterial({ color: col, flatShading: true, roughness: 0.85, metalness: 0, emissive: col, emissiveIntensity: glow });
-    const mat = std(c, 0.2), dark = std(c.clone().multiplyScalar(0.4), 0.05), pale = std(c.clone().lerp(new THREE.Color(0xffffff), 0.6), 0.12);
+    let mat, dark, pale;
+    if (theme.statue === "black") { // black-figure silhouettes with details picked out in clay
+      mat = std(C(0x1c1410), 0); dark = std(C(0x0d0907), 0); pale = std(C(theme.line), 0.1);
+    } else if (theme.statue === "mono") { // the plaza colour's brightness in grey
+      const g = C(color).getHSL({}).l;
+      const c = new THREE.Color(g, g, g);
+      mat = std(c, 0.05); dark = std(C(0x23211f), 0); pale = std(c.clone().lerp(C(0xffffff), 0.6), 0.05);
+    } else {
+      const c = C(color);
+      mat = std(c, 0.2); dark = std(c.clone().multiplyScalar(0.4), 0.05); pale = std(c.clone().lerp(C(0xffffff), 0.6), 0.12);
+    }
     const P = (geo, m, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
       const o = new THREE.Mesh(geo, m);
       o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.rotation.set(rx, ry, rz);
@@ -643,7 +735,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
   function makeStatue(p) {
     const g = new THREE.Group();
     g.position.set(p.sx, p.y0, p.sz);
-    const stone = new THREE.MeshLambertMaterial({ color: 0xe8dfd4 });
+    const stone = new THREE.MeshLambertMaterial({ color: theme.plinth });
     const block = (w, h, y) => {
       const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), stone);
       o.position.y = y;
@@ -765,9 +857,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     world = new THREE.Group();
     scene.add(world);
 
-    const topMat = new THREE.MeshLambertMaterial({ color: 0x5b4a57 });
-    const sideMat = new THREE.MeshLambertMaterial({ color: 0xcfc3c2 });
-    const hangMat = new THREE.MeshLambertMaterial({ color: 0xb9adb4 });
+    const topMat = new THREE.MeshLambertMaterial({ color: theme.floor });
+    const sideMat = new THREE.MeshLambertMaterial({ color: theme.slabSide });
+    const hangMat = new THREE.MeshLambertMaterial({ color: theme.columns });
 
     LEVELS.forEach((L) => {
       const plazas = PLAZAS.filter((p) => p.L === L.i);
@@ -807,7 +899,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
         if (L.maze.h[j][i]) seg(L.maze.h[j][i], edgeH(i, j), i, j, { x: ox + (i + 0.5) * CS, z: oz + j * CS, sx: CS + WT, sz: WT, vert: false });
       for (let j = 0; j < L.n; j++) for (let i = 0; i <= L.n; i++)
         if (L.maze.v[j][i]) seg(L.maze.v[j][i], edgeV(i, j), i, j, { x: ox + i * CS, z: oz + (j + 0.5) * CS, sx: WT, sz: CS + WT, vert: true });
-      const base = new THREE.Color([0x3f5c4c, 0x41604f, 0x466553][L.i]), col = new THREE.Color();
+      const base = C(theme.hedge[L.i % theme.hedge.length]), col = new THREE.Color();
       const hedgeColor = () => col.copy(base);
       segs.forEach((s) => L.boxes.push({ x0: s.x - s.sx / 2, x1: s.x + s.sx / 2, z0: s.z - s.sz / 2, z1: s.z + s.sz / 2 }));
 
@@ -817,8 +909,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       segs.filter((s) => s.win).forEach((s) => (byType[s.win] = byType[s.win] || []).push(s));
       Object.entries(byType).forEach(([type, list]) => {
         const geo = windowGeometries(type);
-        const walls = new THREE.InstancedMesh(geo.wall, new THREE.MeshLambertMaterial({ color: 0xffffff }), list.length);
-        const frames = new THREE.InstancedMesh(geo.frame, new THREE.MeshLambertMaterial({ color: 0xe2d6cc }), list.length);
+        const walls = new THREE.InstancedMesh(geo.wall, hedgeMaterial(), list.length);
+        const frames = new THREE.InstancedMesh(geo.frame, new THREE.MeshLambertMaterial({ color: theme.frame }), list.length);
         list.forEach((s, i) => {
           d.position.set(s.x, L.y, s.z);
           d.rotation.set(0, s.vert ? Math.PI / 2 : 0, 0);
@@ -833,7 +925,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       d.rotation.set(0, 0, 0);
 
       const solid = segs.filter((s) => !s.win);
-      const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), solid.length);
+      const hedges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), hedgeMaterial(), solid.length);
       solid.forEach((s, i) => {
         const hgt = WH;
         d.position.set(s.x, L.y + (hgt - SINK) / 2, s.z);
@@ -848,7 +940,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
       // plazas: tinted paving and a statue
       plazas.forEach((p) => {
         const pave = new THREE.Mesh(new THREE.PlaneGeometry(3 * CS - WT, 3 * CS - WT),
-          new THREE.MeshLambertMaterial({ color: new THREE.Color(p.color).lerp(new THREE.Color(0x5b4a57), 0.62) }));
+          patterned(new THREE.MeshLambertMaterial({ color: C(p.color).lerp(C(theme.pave[0]), theme.pave[1]) }), theme.paveStyle, theme.paveLine));
         pave.rotation.x = -Math.PI / 2;
         pave.position.set(p.cx, L.y + 0.015, p.cz);
         pave.receiveShadow = true;
@@ -865,7 +957,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     const tg = new THREE.BufferGeometry();
     tg.setAttribute("position", new THREE.BufferAttribute(tp, 3));
     tg.setDrawRange(0, 0);
-    trail = new THREE.Points(tg, new THREE.PointsMaterial({ size: 0.5, map: GLOW, color: 0xffc98a, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+    trail = new THREE.Points(tg, new THREE.PointsMaterial({
+      size: 0.5, map: GLOW, color: theme.trail[0], transparent: true, opacity: 0.8, depthWrite: false,
+      blending: theme.trail[1] ? THREE.AdditiveBlending : THREE.NormalBlending,
+    }));
     trail.frustumCulled = false;
     trail.count = 0;
     world.add(trail);
@@ -1283,6 +1378,48 @@ body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color
     (open ? $("#help-close") : $("#info")).focus();
   };
   $("#info").addEventListener("click", () => setHelp(true));
+
+  // switching the look rebuilds the same maze in the new materials and puts you back where you were
+  function rebuildInPlace() {
+    if (mode === "intro" || mode === "won" || !player.L) { buildWorld(seed); return; }
+    const keep = {
+      L: player.L.i, x: player.x, z: player.z, yaw: player.yaw, pitch: player.pitch, bob: player.bob,
+      arch: onArch && { i: arches.indexOf(onArch.arch), s: onArch.s, from: onArch.from, dir: onArch.dir },
+      stats: { ...stats, plazas: new Set(stats.plazas) }, plaza: curPlaza && curPlaza.id,
+      trail: trail.geometry.attributes.position.array.slice(), count: trail.count, last: lastTrail,
+    };
+    buildWorld(seed);
+    Object.assign(player, { L: LEVELS[keep.L], x: keep.x, z: keep.z, yaw: keep.yaw, pitch: keep.pitch, bob: keep.bob });
+    if (keep.arch) onArch = { arch: arches[keep.arch.i], s: keep.arch.s, from: keep.arch.from, dir: keep.arch.dir };
+    Object.assign(stats, keep.stats);
+    curPlaza = keep.plaza ? plazaById[keep.plaza] : null;
+    trail.geometry.attributes.position.array.set(keep.trail);
+    trail.geometry.attributes.position.needsUpdate = true;
+    trail.count = keep.count;
+    trail.geometry.setDrawRange(0, Math.min(keep.count, keep.trail.length / 3));
+    lastTrail = keep.last;
+  }
+  function renderThemes() {
+    const seg = $("#theme-seg");
+    seg.innerHTML = "";
+    Object.entries(THEMES).forEach(([key, t]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = t.label;
+      b.setAttribute("aria-pressed", String(key === themeKey));
+      b.addEventListener("click", () => {
+        if (key === themeKey) return;
+        themeKey = key;
+        theme = THEMES[key];
+        try { localStorage.setItem(THEME_KEY, key); } catch (e) { /* not kept */ }
+        applyTheme();
+        rebuildInPlace();
+        renderThemes();
+      });
+      seg.append(b);
+    });
+  }
+  renderThemes();
   $("#help-close").addEventListener("click", () => setHelp(false));
   window.addEventListener("keydown", (e) => { if (e.code === "Escape" && helpOpen) setHelp(false); });
 
