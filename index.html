@@ -1,4 +1,14 @@
 <title>Mazes and Bridges</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1f3a">
+<!-- opened from the home screen, the game runs full screen like an app -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mazes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,300;1,400&family=Josefin+Sans:wght@400;600&display=swap">
@@ -15,7 +25,7 @@
   --f-ui: "Josefin Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
 }
-html, body { height: 100%; background: var(--night); color: var(--mist); overflow: hidden; overscroll-behavior: none; }
+html, body { height: 100%; margin: 0; background: var(--night); color: var(--mist); overflow: hidden; overscroll-behavior: none; }
 [hidden] { display: none !important; }
 body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
