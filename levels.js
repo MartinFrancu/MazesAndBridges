@@ -5,7 +5,7 @@ window.LEVELGEN = (() => {
   const SIZES = { small: 13, medium: 17, large: 23 }; // cells per side
   const TEMPLATE = {
     platforms: [
-      { size: "large", inner: 1, up: 2 }, // inner: bridges between two of its own plazas; up: bridges to the next platform
+      { size: "large", inner: 3, up: 2 }, // inner: bridges between two of its own plazas; up: bridges to the next platform
       { size: "medium", inner: 1 },       // the top platform holds the way out, so it has no "up"
     ],
     rise: 15,    // metres between platforms
